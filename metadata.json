@@ -1,0 +1,6 @@
+{
+  "name": "Nusantara Traffic Sim - Indonesian Small Town 3D Simulator",
+  "description": "Interactive 3D simulation of an Indonesian small town demonstrating the impact of private vehicles vs public transport (angkot & buses) on traffic congestion, school bus delays, and commute times.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
