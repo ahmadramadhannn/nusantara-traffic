@@ -112,13 +112,13 @@ export const ROAD_SEGMENTS: RoadSegment[] = [
   { id: 'diponegoro_ne_to_n', name: 'Jl. Diponegoro (Sudirman - Utara)', fromNodeId: 'int_ne', toNodeId: 'diponegoro_n', length: 65, lanes: 1, speedLimit: 35 },
 ];
 
-// Indonesian Town Landmarks
+// Indonesian Town Landmarks & Places
 export const TOWN_LANDMARKS: Landmark[] = [
   {
     id: 'school_sdn01',
     name: 'SD Negeri 01 & SMP Sukamaju',
     category: 'education',
-    position: [-55, 0, -60],
+    position: [-65, 0, -60],
     roadId: 'merdeka_n_to_nw',
     description: 'Sekolah dasar dan menengah favorit warga. Ratusan murid diantar jemput setiap pagi.',
     iconName: 'GraduationCap',
@@ -127,7 +127,7 @@ export const TOWN_LANDMARKS: Landmark[] = [
     id: 'alun_alun',
     name: 'Alun-Alun & Masjid Agung',
     category: 'civic',
-    position: [0, 0, -50],
+    position: [0, 0, -65],
     roadId: 'sudirman_nw_to_ne',
     description: 'Pusat jantung kota dengan ruang terbuka hijau, menara masjid, dan pohon beringin kembar.',
     iconName: 'Trees',
@@ -136,7 +136,7 @@ export const TOWN_LANDMARKS: Landmark[] = [
     id: 'pasar_tradisional',
     name: 'Pasar Tradisional Sukamaju',
     category: 'market',
-    position: [-55, 0, 55],
+    position: [-65, 0, 65],
     roadId: 'kartini_w_to_sw',
     description: 'Pusat belanja sayur, warung kelontong, dan kuliner pagi yang ramai pedagang.',
     iconName: 'Store',
@@ -145,7 +145,7 @@ export const TOWN_LANDMARKS: Landmark[] = [
     id: 'terminal_angkot',
     name: 'Terminal Angkot & Halte Bus',
     category: 'transit',
-    position: [55, 0, 5],
+    position: [65, 0, 5],
     roadId: 'diponegoro_ne_to_se',
     description: 'Hub transportasi umum antar desa dan rute kota dengan armada angkot biru dan bus feeder.',
     iconName: 'Bus',
@@ -154,7 +154,7 @@ export const TOWN_LANDMARKS: Landmark[] = [
     id: 'perumahan_griya',
     name: 'Perumahan Griya Asri Sukamaju',
     category: 'residential',
-    position: [-75, 0, -20],
+    position: [-75, 0, -10],
     roadId: 'sudirman_w_to_nw',
     description: 'Kawasan pemukiman keluarga pekerja dan pegawai kantor.',
     iconName: 'Home',
@@ -163,10 +163,50 @@ export const TOWN_LANDMARKS: Landmark[] = [
     id: 'rsud_hospital',
     name: 'RSUD / Puskesmas Sentral',
     category: 'healthcare',
-    position: [55, 0, 60],
+    position: [65, 0, 60],
     roadId: 'kartini_se_to_e',
     description: 'Layanan gawat darurat dan kesehatan warga yang membutuhkan akses jalan lancar tanpa macet.',
     iconName: 'HeartPulse',
+  },
+];
+
+// Rich interactive places registry
+export const TOWN_PLACES: { id: string; name: string; position: [number, number, number]; category: any; description: string }[] = [
+  ...TOWN_LANDMARKS,
+  {
+    id: 'ruko_barat',
+    name: 'Ruko Pertokoan Barat',
+    category: 'commercial',
+    position: [-15, 0, -12],
+    description: 'Toko elektronik, fotokopi, dan warung makan pecel lele.',
+  },
+  {
+    id: 'ruko_sentral',
+    name: 'Ruko Sentral & Kopi Sukamaju',
+    category: 'commercial',
+    position: [0, 0, -12],
+    description: 'Pusat tongkrongan warga dan warung kopi modern.',
+  },
+  {
+    id: 'ruko_timur',
+    name: 'Ruko Timur & Minimarket',
+    category: 'commercial',
+    position: [15, 0, -12],
+    description: 'Minimarket waralaba 24 jam dan apotek warga.',
+  },
+  {
+    id: 'perumahan_blok_b',
+    name: 'Perumahan Griya Asri Blok B',
+    category: 'residential',
+    position: [-75, 0, 10],
+    description: 'Komplek pemukiman warga perumahan bagian selatan.',
+  },
+  {
+    id: 'warung_tenda_pasar',
+    name: 'Sentra Kuliner Pasar Malam',
+    category: 'market',
+    position: [-65, 0, 78],
+    description: 'Deretan warung tenda kuliner malam dan gorengan hangat.',
   },
 ];
 
@@ -188,3 +228,22 @@ export const NODE_CONNECTIONS: Record<string, string[]> = {
   'diponegoro_n': ['int_ne'],
   'diponegoro_s': ['int_se'],
 };
+
+// Find nearest road node given any [x, z] coordinates
+export function findNearestRoadNode(x: number, z: number): RoadNode {
+  let closestNode = TOWN_NODES['int_nw'];
+  let minDistanceSq = Infinity;
+
+  for (const node of Object.values(TOWN_NODES)) {
+    const dx = node.x - x;
+    const dz = node.z - z;
+    const distSq = dx * dx + dz * dz;
+    if (distSq < minDistanceSq) {
+      minDistanceSq = distSq;
+      closestNode = node;
+    }
+  }
+
+  return closestNode;
+}
+

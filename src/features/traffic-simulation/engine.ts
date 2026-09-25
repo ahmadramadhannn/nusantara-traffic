@@ -7,8 +7,11 @@ import {
   WeatherType,
   TimeOfDay,
   SimulationStats,
+  TripPoint,
+  DetailedRoute,
+  RouteSegmentBreakdown,
 } from '../../types';
-import { ROAD_SEGMENTS, TOWN_NODES, NODE_CONNECTIONS, TOWN_LANDMARKS } from '../town-scene/constants';
+import { ROAD_SEGMENTS, TOWN_NODES, NODE_CONNECTIONS, TOWN_LANDMARKS, findNearestRoadNode } from '../town-scene/constants';
 
 // Vehicle specific properties
 export const VEHICLE_CONFIGS: Record<
@@ -172,20 +175,19 @@ export function calculateVehiclePose(
   // Direction angle
   const angle = Math.atan2(dx, dz); // Three.js yaw convention
 
-  // Lane lateral offset (standard lane is on right-hand side in Indonesian left-hand driving)
-  // Indonesia drives on LEFT side:
-  // Moving North (dz < 0): Left side is X- (offset to left of motion)
-  // Moving South (dz > 0): Left side is X+
-  // Moving East (dx > 0): Left side is Z-
-  // Moving West (dx < 0): Left side is Z+
+  // Indonesian Left-Hand Drive (LHD):
+  // When driving East (+X): Left lane is North (-Z)
+  // When driving West (-X): Left lane is South (+Z)
+  // When driving South (+Z): Left lane is East (+X)
+  // When driving North (-Z): Left lane is West (-X)
   const dirX = dx / totalLength;
   const dirZ = dz / totalLength;
 
-  // Left normal vector in 2D (X, Z) is (-dirZ, dirX)
-  const leftNormalX = -dirZ;
-  const leftNormalZ = dirX;
+  // Correct 2D Left Normal Vector
+  const leftNormalX = dirZ;
+  const leftNormalZ = -dirX;
 
-  // Indonesian Left-Hand Drive offset: 1.75 meters to the left of the centerline
+  // Indonesian Left-Hand Drive offset: 1.75 meters to the left of the road centerline
   let lateralOffset = 1.75;
   if (vehicleType === 'motorcycle') {
     // Motorcycles stagger slightly left or right within the lane
@@ -259,15 +261,36 @@ export function isLightRedForSegment(
   const light = trafficLights[segment.toNodeId];
   if (!light) return false;
 
-  const isEWSegment = segment.name.toLowerCase().includes('sudirman') || segment.name.toLowerCase().includes('kartini');
+  const fromNode = TOWN_NODES[segment.fromNodeId];
+  const toNode = TOWN_NODES[segment.toNodeId];
 
-  if (isEWSegment) {
-    // Road runs East-West: Green when activeDirection === 'EW' and NOT yellow
+  // Determine East-West vs North-South based on geometry and name
+  const isEastWest = fromNode && toNode
+    ? Math.abs(toNode.x - fromNode.x) > Math.abs(toNode.z - fromNode.z)
+    : segment.name.toLowerCase().includes('sudirman') || segment.name.toLowerCase().includes('kartini');
+
+  if (isEastWest) {
+    // East-West corridor (Jl. Sudirman & Jl. Kartini): Green only when activeDirection === 'EW' and NOT yellow
     return light.activeDirection !== 'EW' || light.isYellow;
   } else {
-    // Road runs North-South: Green when activeDirection === 'NS' and NOT yellow
+    // North-South corridor (Jl. Merdeka & Jl. Diponegoro): Green only when activeDirection === 'NS' and NOT yellow
     return light.activeDirection !== 'NS' || light.isYellow;
   }
+}
+
+// Helper to check if a vehicle is currently inside or traversing an intersection box
+const INTERSECTION_POSITIONS: Record<string, { x: number; z: number }> = {
+  int_nw: { x: -35, z: -25 },
+  int_ne: { x: 35, z: -25 },
+  int_sw: { x: -35, z: 35 },
+  int_se: { x: 35, z: 35 },
+};
+
+export function isVehicleInsideIntersection(veh: Vehicle, intId: string, margin = 8.5): boolean {
+  const center = INTERSECTION_POSITIONS[intId];
+  if (!center) return false;
+  const [vx, , vz] = veh.position;
+  return Math.abs(vx - center.x) <= margin && Math.abs(vz - center.z) <= margin;
 }
 
 // Spawn a new vehicle on a chosen route
@@ -285,10 +308,17 @@ export function createVehicleInstance(
 
   const passengers = Math.max(
     1,
-    Math.round(type === 'bus' ? 25 + Math.random() * 20 : type === 'angkot' ? 8 + Math.random() * 6 : config.capacity)
+    Math.round(
+      type === 'bus'
+        ? 25 + Math.random() * 20
+        : type === 'angkot'
+        ? 8 + Math.random() * 6
+        : config.capacity
+    )
   );
 
-  const pose = calculateVehiclePose(currentSegment, 0, type, vehicleCounter);
+  const initialProgress = Math.random() * Math.min(25, currentSegment.length * 0.45);
+  const pose = calculateVehiclePose(currentSegment, initialProgress, type, vehicleCounter);
 
   return {
     id: `veh_${type}_${vehicleCounter}`,
@@ -297,11 +327,11 @@ export function createVehicleInstance(
     lane: 0,
     position: pose.position,
     rotation: pose.rotation,
-    speed: config.baseMaxSpeed * (0.6 + Math.random() * 0.4),
+    speed: config.baseMaxSpeed * (0.6 + Math.random() * 0.35),
     targetSpeed: config.baseMaxSpeed,
     maxSpeed: config.baseMaxSpeed,
     acceleration: 0,
-    progress: Math.random() * Math.min(20, currentSegment.length * 0.4),
+    progress: initialProgress,
     distanceToLead: 999,
     isBraking: false,
     color,
@@ -316,7 +346,7 @@ export function createVehicleInstance(
   };
 }
 
-// Step the vehicle physics and car-following simulation
+// Step the vehicle physics, collision avoidance, and intersection reservation simulation
 export function stepTrafficSimulation(
   vehicles: Vehicle[],
   trafficLights: Record<string, TrafficLightState>,
@@ -328,11 +358,11 @@ export function stepTrafficSimulation(
   let weatherSpeedMultiplier = 1.0;
   let weatherCautionGap = 1.0;
   if (weather === 'rain') {
-    weatherSpeedMultiplier = 0.72; // rain reduces speed
-    weatherCautionGap = 1.45; // larger stopping distance
+    weatherSpeedMultiplier = 0.75;
+    weatherCautionGap = 1.35;
   } else if (weather === 'fog') {
-    weatherSpeedMultiplier = 0.85;
-    weatherCautionGap = 1.2;
+    weatherSpeedMultiplier = 0.88;
+    weatherCautionGap = 1.15;
   }
 
   // Time of day speed limit adjustments
@@ -340,7 +370,7 @@ export function stepTrafficSimulation(
   if (timeOfDay === 'morning_rush' || timeOfDay === 'evening_rush') {
     timeMultiplier = 0.95;
   } else if (timeOfDay === 'night') {
-    timeMultiplier = 1.1;
+    timeMultiplier = 1.08;
   }
 
   // Group vehicles by segment to find leader ahead
@@ -355,6 +385,22 @@ export function stepTrafficSimulation(
   // Sort vehicles in each segment by progress (descending: highest progress is leader ahead)
   for (const segmentId of Object.keys(vehiclesBySegment)) {
     vehiclesBySegment[segmentId].sort((a, b) => b.progress - a.progress);
+  }
+
+  // Track vehicles currently occupying each intersection box for collision-free reservation
+  const intersectionOccupancy: Record<string, Vehicle[]> = {
+    int_nw: [],
+    int_ne: [],
+    int_sw: [],
+    int_se: [],
+  };
+
+  for (const v of vehicles) {
+    for (const intId of Object.keys(intersectionOccupancy)) {
+      if (isVehicleInsideIntersection(v, intId, 6.0)) {
+        intersectionOccupancy[intId].push(v);
+      }
+    }
   }
 
   const updatedVehicles: Vehicle[] = [];
@@ -378,69 +424,154 @@ export function stepTrafficSimulation(
 
     if (vehIndex > 0) {
       leadVehicle = segmentVehicles[vehIndex - 1];
-      distanceToLead = leadVehicle.progress - veh.progress - (leadVehicle.type === 'bus' ? 9.5 : 4.5);
+      const leadLength = leadVehicle.type === 'bus' ? 9.5 : leadVehicle.type === 'truck' ? 5.5 : 4.2;
+      distanceToLead = leadVehicle.progress - veh.progress - leadLength;
+    } else {
+      // Check downstream segment if at head of current segment
+      const nextRouteIndex = veh.routeIndex + 1;
+      if (nextRouteIndex + 1 < veh.routeNodeIds.length) {
+        const nextFrom = veh.routeNodeIds[nextRouteIndex];
+        const nextTo = veh.routeNodeIds[nextRouteIndex + 1];
+        const nextSeg = getSegmentForNodePair(nextFrom, nextTo);
+        if (nextSeg && vehiclesBySegment[nextSeg.id]?.length > 0) {
+          const downstreamVehicles = vehiclesBySegment[nextSeg.id];
+          const downstreamLeader = downstreamVehicles[downstreamVehicles.length - 1];
+          const leadLength = downstreamLeader.type === 'bus' ? 9.5 : 4.2;
+          const distThroughInt = (segment.length - veh.progress) + downstreamLeader.progress - leadLength;
+          if (distThroughInt < distanceToLead) {
+            leadVehicle = downstreamLeader;
+            distanceToLead = distThroughInt;
+          }
+        }
+      }
     }
 
-    // Check intersection stop line
-    const isApproachingIntersection = segment.length - veh.progress < 18;
-    const isRedLight = isLightRedForSegment(segment, trafficLights);
-    const mustStopAtLight = isApproachingIntersection && isRedLight;
+    // Stop Line & Intersection Reservation Logic
+    const targetIntersectionId = segment.toNodeId;
+    const isIntersectionApproach = TOWN_NODES[targetIntersectionId]?.isIntersection;
+    const stopLinePosition = segment.length - 6.0; // Stop line is 6m before intersection center
+    const distanceToStopLine = Math.max(0, stopLinePosition - veh.progress);
 
-    if (mustStopAtLight && distanceToLead > segment.length - veh.progress) {
-      // Virtual obstacle at stop line
-      distanceToLead = Math.max(0.1, segment.length - veh.progress);
+    if (isIntersectionApproach) {
+      const isRedOrYellow = isLightRedForSegment(segment, trafficLights);
+
+      // Condition 1: Must stop at Red or Yellow signal
+      if (isRedOrYellow) {
+        if (veh.progress <= stopLinePosition + 0.5) {
+          distanceToLead = Math.min(distanceToLead, distanceToStopLine);
+        }
+      } else {
+        // Condition 2: Signal is GREEN — Apply "Don't Block The Box" / Anti-Gridlock & Conflict Check
+        if (distanceToStopLine < 14.0 && veh.progress <= stopLinePosition + 0.5) {
+          const occupants = intersectionOccupancy[targetIntersectionId] || [];
+          const conflictingOccupants = occupants.filter((occ) => occ.id !== veh.id && occ.roadId !== veh.roadId);
+
+          // Check if another vehicle is also approaching the same intersection on green but is closer to stop line
+          const approachingCompetitor = vehicles.find((other) => {
+            if (other.id === veh.id) return false;
+            const otherSeg = ROAD_SEGMENTS.find((s) => s.id === other.roadId);
+            if (!otherSeg || otherSeg.toNodeId !== targetIntersectionId) return false;
+            if (otherSeg.id === segment.id) return false; // same segment is handled by lead vehicle
+            const otherStopLine = otherSeg.length - 6.0;
+            const otherDist = otherStopLine - other.progress;
+            return otherDist >= -1.0 && otherDist < distanceToStopLine;
+          });
+
+          // Check if downstream segment has queue blocking the exit
+          const nextRouteIndex = veh.routeIndex + 1;
+          let isNextSegmentBlocked = false;
+          if (nextRouteIndex + 1 < veh.routeNodeIds.length) {
+            const nextFrom = veh.routeNodeIds[nextRouteIndex];
+            const nextTo = veh.routeNodeIds[nextRouteIndex + 1];
+            const nextSeg = getSegmentForNodePair(nextFrom, nextTo);
+            if (nextSeg && vehiclesBySegment[nextSeg.id]?.length > 0) {
+              const slowestNearEntrance = vehiclesBySegment[nextSeg.id].find((v) => v.progress < 9.0 && v.speed < 1.5);
+              if (slowestNearEntrance) {
+                isNextSegmentBlocked = true;
+              }
+            }
+          }
+
+          if (conflictingOccupants.length > 0 || approachingCompetitor || isNextSegmentBlocked) {
+            distanceToLead = Math.min(distanceToLead, Math.max(0.1, distanceToStopLine));
+          }
+        }
+      }
     }
 
     veh.distanceToLead = distanceToLead;
 
-    // Desired target speed with multipliers
+    // Desired target speed
     const speedLimitMps = (segment.speedLimit * 1000) / 3600;
     const desiredSpeed = Math.min(config.baseMaxSpeed, speedLimitMps) * weatherSpeedMultiplier * timeMultiplier;
 
-    // IDM (Intelligent Driver Model) / Car following acceleration calculation
-    const desiredMinGap = config.minGap * weatherCautionGap;
-    const s0 = desiredMinGap;
-    const T = 1.2; // safe time headway (seconds)
+    // IDM (Intelligent Driver Model) car-following
+    const s0 = config.minGap * weatherCautionGap;
+    const T = 1.3;
     const v = veh.speed;
     const deltaV = leadVehicle ? v - leadVehicle.speed : 0;
 
-    // Dynamic desired gap
-    const sStar = s0 + Math.max(0, v * T + (v * deltaV) / (2 * Math.sqrt(2.0 * 2.5)));
+    const sStar = s0 + Math.max(0, v * T + (v * deltaV) / (2 * Math.sqrt(2.2 * 3.0)));
 
-    // Free acceleration term
-    const aMax = 2.0; // max acceleration m/s²
-    const bComfort = 2.8; // comfortable deceleration m/s²
+    const aMax = 2.2;
+    const bComfort = 3.2;
     let acceleration = aMax * (1 - Math.pow(Math.max(0, v / Math.max(0.1, desiredSpeed)), 4));
 
-    // Interaction braking term with lead vehicle or red light
-    if (distanceToLead < 60) {
-      const brakeTerm = Math.pow(sStar / Math.max(0.2, distanceToLead), 2);
+    if (distanceToLead < 50) {
+      const brakeTerm = Math.pow(sStar / Math.max(0.3, distanceToLead), 2);
       acceleration -= bComfort * brakeTerm;
     }
 
-    // Emergency hard braking if too close
-    if (distanceToLead < s0 * 0.7) {
-      acceleration = -5.0;
+    if (distanceToLead < s0 * 0.85) {
+      acceleration = -6.0;
     }
 
-    // Update speed
-    veh.acceleration = acceleration;
-    veh.speed = Math.max(0, Math.min(desiredSpeed * 1.15, veh.speed + acceleration * deltaTime));
-    veh.isBraking = acceleration < -0.8;
+    // Stop at red or waiting at intersection
+    if (isIntersectionApproach) {
+      const mustHoldAtStopLine =
+        isLightRedForSegment(segment, trafficLights) ||
+        (distanceToLead <= distanceToStopLine + 0.2 && distanceToStopLine < 1.5);
 
-    // Progress along current road segment
+      if (mustHoldAtStopLine && veh.progress >= stopLinePosition - 1.0 && veh.progress <= stopLinePosition + 0.5) {
+        acceleration = -8.0;
+        veh.speed = 0;
+      }
+    }
+
+    veh.acceleration = acceleration;
+    veh.speed = Math.max(0, Math.min(desiredSpeed * 1.1, veh.speed + acceleration * deltaTime));
+    veh.isBraking = acceleration < -1.0;
+
     veh.progress += veh.speed * deltaTime;
+
+    // Strict Stop Line Clamping on Red / Yield
+    if (isIntersectionApproach && (isLightRedForSegment(segment, trafficLights) || distanceToLead <= distanceToStopLine + 0.1)) {
+      if (veh.progress > stopLinePosition && veh.progress <= stopLinePosition + 2.0) {
+        veh.progress = stopLinePosition;
+        veh.speed = 0;
+      }
+    }
+
+    // Strict Same-Lane Leader Headway Clamping
+    if (leadVehicle && leadVehicle.roadId === veh.roadId) {
+      const leadLength = leadVehicle.type === 'bus' ? 9.5 : leadVehicle.type === 'truck' ? 5.5 : 4.2;
+      const minProgressBehind = leadVehicle.progress - leadLength - (config.minGap * 0.75);
+      if (veh.progress > minProgressBehind) {
+        veh.progress = Math.max(0, minProgressBehind);
+        veh.speed = Math.min(veh.speed, Math.max(0, leadVehicle.speed * 0.8));
+      }
+    }
+
     veh.totalDistanceTraveled += veh.speed * deltaTime;
     veh.totalTravelTime += deltaTime;
 
-    if (veh.speed < 1.0) {
+    if (veh.speed < 0.8) {
       veh.waitTime += deltaTime;
       stoppedCount++;
     }
 
-    // Check if vehicle has reached end of segment
+    // Segment Transition
     if (veh.progress >= segment.length) {
-      // Transition to next segment in route
       const nextRouteIndex = veh.routeIndex + 1;
 
       if (nextRouteIndex + 1 < veh.routeNodeIds.length) {
@@ -453,7 +584,6 @@ export function stepTrafficSimulation(
           veh.routeIndex = nextRouteIndex;
           veh.progress = 0.5;
         } else {
-          // Route completed or blocked: generate new continuous route
           const newRoute = generateRandomTownRoute();
           veh.routeNodeIds = newRoute;
           veh.routeIndex = 0;
@@ -462,7 +592,6 @@ export function stepTrafficSimulation(
           veh.progress = 0;
         }
       } else {
-        // Finished trip: loop with a new route
         const newRoute = generateRandomTownRoute();
         veh.routeNodeIds = newRoute;
         veh.routeIndex = 0;
@@ -478,17 +607,14 @@ export function stepTrafficSimulation(
     veh.position = pose.position;
     veh.rotation = pose.rotation;
 
-    // Stats accumulation
     totalSpeed += veh.speed;
     totalPassengers += veh.passengers;
     totalRoadSpaceM2 += config.roadSpaceM2;
 
-    // Fuel consumption: idle/stop and go uses significantly more fuel (L/hr)
     const baseLitersPerHour = (config.fuelConsumptionLPer100Km * Math.max(15, veh.speed * 3.6)) / 100;
     const idlePenalty = veh.speed < 2.0 ? 1.8 : 1.0;
     totalFuelLitersPerHour += baseLitersPerHour * idlePenalty;
 
-    // School bus delay tracking
     if (veh.type === 'bus' && veh.customLabel?.includes('Sekolah')) {
       const freeFlowTime = veh.totalDistanceTraveled / (config.baseMaxSpeed || 1);
       const actualDelay = Math.max(0, (veh.totalTravelTime - freeFlowTime) / 60);
@@ -496,6 +622,40 @@ export function stepTrafficSimulation(
     }
 
     updatedVehicles.push(veh);
+  }
+
+  // Global Proximity Collision Resolution & Physical Displacement Pass
+  for (let a = 0; a < updatedVehicles.length; a++) {
+    for (let b = a + 1; b < updatedVehicles.length; b++) {
+      const vA = updatedVehicles[a];
+      const vB = updatedVehicles[b];
+      const dx = vA.position[0] - vB.position[0];
+      const dz = vA.position[2] - vB.position[2];
+      const dist = Math.hypot(dx, dz);
+
+      const radA = vA.type === 'bus' ? 4.8 : vA.type === 'truck' ? 2.9 : vA.type === 'motorcycle' ? 1.2 : 2.2;
+      const radB = vB.type === 'bus' ? 4.8 : vB.type === 'truck' ? 2.9 : vB.type === 'motorcycle' ? 1.2 : 2.2;
+      const minDist = radA + radB + 0.4;
+
+      if (dist < minDist && dist > 0.001) {
+        // Decide which vehicle yields
+        const yieldVeh = vA.speed <= vB.speed ? vA : vB;
+        const leadVeh = yieldVeh === vA ? vB : vA;
+
+        yieldVeh.speed = Math.max(0, yieldVeh.speed * 0.2);
+        yieldVeh.isBraking = true;
+
+        // Push yielding vehicle back along its segment progress to eliminate physical overlap
+        const overlap = minDist - dist + 0.15;
+        yieldVeh.progress = Math.max(0, yieldVeh.progress - overlap);
+        const seg = ROAD_SEGMENTS.find((s) => s.id === yieldVeh.roadId);
+        if (seg) {
+          const newPose = calculateVehiclePose(seg, yieldVeh.progress, yieldVeh.type, 0);
+          yieldVeh.position = newPose.position;
+          yieldVeh.rotation = newPose.rotation;
+        }
+      }
+    }
   }
 
   // Calculate high-level simulation statistics
@@ -556,3 +716,143 @@ export function stepTrafficSimulation(
 
   return { vehicles: updatedVehicles, stats };
 }
+
+// Calculate high-precision route, 3D path polyline, and dynamic live-traffic ETAs
+export function calculateDetailedRoute(
+  startPoint: TripPoint,
+  endPoint: TripPoint,
+  vehicles: Vehicle[],
+  trafficLights: Record<string, TrafficLightState>,
+  weather: WeatherType
+): DetailedRoute {
+  const [sx, sy, sz] = startPoint.position;
+  const [ex, ey, ez] = endPoint.position;
+
+  // Find nearest entry and exit nodes on the road network
+  const startNode = findNearestRoadNode(sx, sz);
+  const endNode = findNearestRoadNode(ex, ez);
+
+  const nodePath = findNodePath(startNode.id, endNode.id);
+  const segmentBreakdowns: RouteSegmentBreakdown[] = [];
+  const segmentIds: string[] = [];
+  const pathPoints: [number, number, number][] = [];
+
+  // Start with initial point
+  pathPoints.push([sx, 0.4, sz]);
+
+  // Connect to road entry node
+  pathPoints.push([startNode.x, 0.35, startNode.z]);
+
+  let totalDistanceMeters = Math.hypot(startNode.x - sx, startNode.z - sz);
+  let totalFreeTimeSec = totalDistanceMeters / 6.0; // 6 m/s walking / local access
+  let totalLiveTimeSec = totalFreeTimeSec;
+
+  // Weather speed penalty
+  const weatherMult = weather === 'rain' ? 0.72 : weather === 'fog' ? 0.85 : 1.0;
+
+  // Traverse all segments in the path
+  for (let i = 0; i < nodePath.length - 1; i++) {
+    const fromId = nodePath[i];
+    const toId = nodePath[i + 1];
+    const segment = getSegmentForNodePair(fromId, toId);
+
+    if (segment) {
+      segmentIds.push(segment.id);
+      const toNode = TOWN_NODES[toId];
+      if (toNode) {
+        pathPoints.push([toNode.x, 0.35, toNode.z]);
+      }
+
+      totalDistanceMeters += segment.length;
+
+      // Calculate live speeds on this segment
+      const vehiclesOnSegment = vehicles.filter((v) => v.roadId === segment.id);
+      const freeSpeedMps = ((segment.speedLimit * 1000) / 3600) * weatherMult;
+      const freeSpeedKmh = freeSpeedMps * 3.6;
+
+      let liveSpeedMps = freeSpeedMps;
+      let isWaitingAtRed = false;
+      let lightWaitSec = 0;
+
+      if (vehiclesOnSegment.length > 0) {
+        const avgSpeed = vehiclesOnSegment.reduce((sum, v) => sum + v.speed, 0) / vehiclesOnSegment.length;
+        liveSpeedMps = Math.max(1.2, avgSpeed);
+      }
+
+      // Check red light queue impact at segment exit
+      const isRed = isLightRedForSegment(segment, trafficLights);
+      if (isRed) {
+        isWaitingAtRed = true;
+        const queueCount = vehiclesOnSegment.filter((v) => v.speed < 2.0).length;
+        lightWaitSec = 4.0 + Math.min(22, queueCount * 3.5);
+      }
+
+      const segFreeTime = segment.length / freeSpeedMps;
+      const segLiveTime = segment.length / liveSpeedMps + lightWaitSec;
+
+      totalFreeTimeSec += segFreeTime;
+      totalLiveTimeSec += segLiveTime;
+
+      const liveSpeedKmh = Math.round(liveSpeedMps * 3.6 * 10) / 10;
+      const congestionPct = Math.round(Math.min(100, Math.max(0, (1 - liveSpeedMps / freeSpeedMps) * 100)));
+
+      segmentBreakdowns.push({
+        segmentId: segment.id,
+        segmentName: segment.name,
+        lengthMeters: segment.length,
+        liveSpeedKmh,
+        freeSpeedKmh: Math.round(freeSpeedKmh * 10) / 10,
+        congestionPct,
+        traversalTimeSec: Math.round(segLiveTime),
+        isRedLightWaiting: isWaitingAtRed,
+      });
+    }
+  }
+
+  // Connect to final destination
+  pathPoints.push([ex, 0.4, ez]);
+  const exitDist = Math.hypot(ex - endNode.x, ez - endNode.z);
+  totalDistanceMeters += exitDist;
+  const exitAccessSec = exitDist / 6.0;
+  totalFreeTimeSec += exitAccessSec;
+  totalLiveTimeSec += exitAccessSec;
+
+  const delaySeconds = Math.max(0, totalLiveTimeSec - totalFreeTimeSec);
+
+  // Compute mode-specific accurate travel times
+  const carLiveSec = Math.round(totalLiveTimeSec);
+  const carClearSec = Math.round(totalFreeTimeSec);
+  const carDelaySec = Math.round(delaySeconds);
+
+  // Motorbike can filter through traffic (~35% less delay)
+  const bikeLiveSec = Math.round(totalFreeTimeSec * 0.9 + delaySeconds * 0.45);
+  const bikeClearSec = Math.round(totalFreeTimeSec * 0.9);
+  const bikeDelaySec = Math.max(0, bikeLiveSec - bikeClearSec);
+
+  // Angkot: fast boarding stops + standard traffic flow
+  const angkotLiveSec = Math.round(totalLiveTimeSec * 1.05 + 12);
+  const angkotClearSec = Math.round(totalFreeTimeSec * 1.05 + 12);
+  const angkotDelaySec = Math.max(0, angkotLiveSec - angkotClearSec);
+
+  // Bus: dedicated capacity, steady boarding
+  const busLiveSec = Math.round(totalLiveTimeSec * 1.1 + 15);
+  const busClearSec = Math.round(totalFreeTimeSec * 1.1 + 15);
+  const busDelaySec = Math.max(0, busLiveSec - busClearSec);
+
+  return {
+    pathPoints,
+    segmentIds,
+    totalDistanceMeters: Math.round(totalDistanceMeters),
+    freeFlowTimeSeconds: Math.round(totalFreeTimeSec),
+    liveTrafficTimeSeconds: Math.round(totalLiveTimeSec),
+    delaySeconds: Math.round(delaySeconds),
+    segmentBreakdowns,
+    modeTimes: {
+      car: { liveSec: carLiveSec, delaySec: carDelaySec, clearSec: carClearSec },
+      motorcycle: { liveSec: bikeLiveSec, delaySec: bikeDelaySec, clearSec: bikeClearSec },
+      angkot: { liveSec: angkotLiveSec, delaySec: angkotDelaySec, clearSec: angkotClearSec },
+      bus: { liveSec: busLiveSec, delaySec: busDelaySec, clearSec: busClearSec },
+    },
+  };
+}
+

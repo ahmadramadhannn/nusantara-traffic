@@ -1,17 +1,12 @@
 import React from 'react';
 import { useTrafficStore } from '../../store/useTrafficStore';
 import { Bus, Car, Bike, CheckCircle2, Clock, X, Gauge } from 'lucide-react';
-import { TOWN_LANDMARKS } from '../town-scene/constants';
 
 export const TripSimulationBanner: React.FC = () => {
   const routeTrip = useTrafficStore((s) => s.routeTrip);
   const cancelTripSimulation = useTrafficStore((s) => s.cancelTripSimulation);
-  const stats = useTrafficStore((s) => s.stats);
 
   if (!routeTrip.isActive) return null;
-
-  const startLm = TOWN_LANDMARKS.find((l) => l.id === routeTrip.startLandmarkId) || TOWN_LANDMARKS[0];
-  const endLm = TOWN_LANDMARKS.find((l) => l.id === routeTrip.endLandmarkId) || TOWN_LANDMARKS[1];
 
   const getVehicleIcon = () => {
     switch (routeTrip.vehicleType) {
@@ -27,13 +22,16 @@ export const TripSimulationBanner: React.FC = () => {
     }
   };
 
+  const mins = Math.floor(routeTrip.elapsedTripSeconds / 60);
+  const secs = Math.round(routeTrip.elapsedTripSeconds % 60);
+
   return (
     <div className="absolute top-18 right-6 z-20 max-w-sm w-full p-4 bg-slate-950/85 backdrop-blur-md border border-sky-500/50 rounded-2xl shadow-2xl text-white animate-fade-in">
       <div className="flex items-center justify-between pb-2 border-b border-slate-800">
         <div className="flex items-center gap-2">
           {getVehicleIcon()}
           <span className="text-xs font-bold font-display uppercase tracking-wider text-sky-400">
-            Active Trip Simulation
+            Active 3D Chase Ride
           </span>
         </div>
         <button
@@ -48,7 +46,7 @@ export const TripSimulationBanner: React.FC = () => {
         <div className="flex items-center justify-between text-slate-300">
           <span className="text-slate-400">Route:</span>
           <span className="font-semibold text-white truncate max-w-[200px]">
-            {startLm.name} → {endLm.name}
+            {routeTrip.startPoint.name} → {routeTrip.endPoint.name}
           </span>
         </div>
 
@@ -58,14 +56,9 @@ export const TripSimulationBanner: React.FC = () => {
         </div>
 
         <div className="flex items-center justify-between text-slate-300">
-          <span className="text-slate-400">Trip Est. Time:</span>
+          <span className="text-slate-400">Elapsed Time:</span>
           <span className="font-mono font-bold text-white">
-            {routeTrip.estimatedTimeCurrentMin} min{' '}
-            {routeTrip.delayMinutes > 0 && (
-              <span className="text-rose-400 text-[11px] font-normal">
-                (+{routeTrip.delayMinutes}m delay)
-              </span>
-            )}
+            {mins}m {secs.toString().padStart(2, '0')}s
           </span>
         </div>
       </div>
@@ -73,7 +66,7 @@ export const TripSimulationBanner: React.FC = () => {
       {/* Trip Progress Bar */}
       <div className="mt-2">
         <div className="flex justify-between text-[11px] text-slate-400 mb-1">
-          <span>Trip Progress</span>
+          <span>Route Progress</span>
           <span className="font-mono font-bold text-sky-400">{routeTrip.currentProgressPct}%</span>
         </div>
         <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">

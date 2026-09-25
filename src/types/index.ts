@@ -76,19 +76,62 @@ export interface TrafficLightState {
   isYellow: boolean;
 }
 
+export interface TripPoint {
+  id: string;
+  name: string;
+  position: [number, number, number];
+  category?: 'education' | 'market' | 'civic' | 'residential' | 'transit' | 'healthcare' | 'commercial' | 'custom';
+  description?: string;
+  roadNodeId?: string;
+}
+
+export interface RouteSegmentBreakdown {
+  segmentId: string;
+  segmentName: string;
+  lengthMeters: number;
+  liveSpeedKmh: number;
+  freeSpeedKmh: number;
+  congestionPct: number;
+  traversalTimeSec: number;
+  isRedLightWaiting: boolean;
+}
+
+export interface DetailedRoute {
+  pathPoints: [number, number, number][]; // 3D coordinates for polyline rendering
+  segmentIds: string[];
+  totalDistanceMeters: number;
+  freeFlowTimeSeconds: number;
+  liveTrafficTimeSeconds: number;
+  delaySeconds: number;
+  segmentBreakdowns: RouteSegmentBreakdown[];
+  // Mode-specific live calculations
+  modeTimes: {
+    car: { liveSec: number; delaySec: number; clearSec: number };
+    motorcycle: { liveSec: number; delaySec: number; clearSec: number };
+    angkot: { liveSec: number; delaySec: number; clearSec: number };
+    bus: { liveSec: number; delaySec: number; clearSec: number };
+  };
+}
+
 export interface RouteTripSimulation {
   isActive: boolean;
-  startLandmarkId: string;
-  endLandmarkId: string;
+  startPoint: TripPoint;
+  endPoint: TripPoint;
   vehicleType: VehicleType;
   simulatedVehicleId?: string;
-  distanceMeters: number;
-  estimatedTimeClearMin: number;
-  estimatedTimeCurrentMin: number;
-  delayMinutes: number;
+  detailedRoute: DetailedRoute | null;
   currentProgressPct: number;
+  elapsedTripSeconds: number;
   isCompleted: boolean;
 }
+
+export interface ContextMenuState {
+  isOpen: boolean;
+  screenX: number;
+  screenY: number;
+  point: TripPoint;
+}
+
 
 export interface SimulationStats {
   totalActiveVehicles: number;

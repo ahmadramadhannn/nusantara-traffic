@@ -1,22 +1,26 @@
 import { create } from 'zustand';
 import {
   CameraViewMode,
+  ContextMenuState,
+  DetailedRoute,
   RouteTripSimulation,
   SimulationStats,
   TimeOfDay,
   TrafficLightState,
+  TripPoint,
   Vehicle,
   VehicleType,
   WeatherType,
 } from '../types';
 import {
+  calculateDetailedRoute,
   createVehicleInstance,
   findNodePath,
   initializeTrafficLights,
   stepTrafficSimulation,
   updateTrafficLights,
 } from '../features/traffic-simulation/engine';
-import { TOWN_LANDMARKS } from '../features/town-scene/constants';
+import { findNearestRoadNode, TOWN_LANDMARKS } from '../features/town-scene/constants';
 
 export interface FleetConfig {
   privateCars: number;
@@ -48,8 +52,15 @@ export interface TrafficStoreState {
   // Fleet configuration
   fleetConfig: FleetConfig;
 
-  // Route Trip Planning
+  // Real-Time Trip Planner Points & Detailed Route
+  startPoint: TripPoint;
+  endPoint: TripPoint;
+  activeTripMode: VehicleType;
+  detailedRoute: DetailedRoute;
   routeTrip: RouteTripSimulation;
+
+  // Context Menu for right-clicking any building/place/ground
+  contextMenu: ContextMenuState;
 
   // UI Modal State
   activeModal: 'fleet' | 'environment' | 'stats' | 'route' | 'presets' | null;
@@ -71,7 +82,16 @@ export interface TrafficStoreState {
   respawnFleet: () => void;
   applyPreset: (presetKey: string) => void;
 
-  startTripSimulation: (startLandmarkId: string, endLandmarkId: string, vehicleType: VehicleType) => void;
+  // Dynamic Trip Planning Actions
+  setTripStartPoint: (point: TripPoint) => void;
+  setTripEndPoint: (point: TripPoint) => void;
+  swapTripPoints: () => void;
+  setActiveTripMode: (mode: VehicleType) => void;
+
+  openContextMenu: (screenX: number, screenY: number, point: TripPoint) => void;
+  closeContextMenu: () => void;
+
+  startTripSimulation: (vehicleType?: VehicleType) => void;
   cancelTripSimulation: () => void;
 
   tickSimulation: (realDeltaTime: number) => void;
@@ -83,6 +103,22 @@ const INITIAL_FLEET: FleetConfig = {
   angkots: 8,
   buses: 3,
   trucks: 3,
+};
+
+const DEFAULT_START: TripPoint = {
+  id: 'perumahan_griya',
+  name: 'Perumahan Griya Asri',
+  position: [-75, 0, -10],
+  category: 'residential',
+  description: 'Komplek pemukiman warga Sukamaju',
+};
+
+const DEFAULT_END: TripPoint = {
+  id: 'school_sdn01',
+  name: 'SD Negeri 01 Sukamaju',
+  position: [-65, 0, -60],
+  category: 'education',
+  description: 'Sekolah Dasar Negeri 01 Sukamaju',
 };
 
 function buildFleetVehicles(config: FleetConfig): Vehicle[] {
@@ -122,6 +158,14 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
   const initialVehicles = buildFleetVehicles(INITIAL_FLEET);
   const initialSim = stepTrafficSimulation(initialVehicles, initialLights, 'clear', 'morning_rush', 0.05);
 
+  const initialRoute = calculateDetailedRoute(
+    DEFAULT_START,
+    DEFAULT_END,
+    initialSim.vehicles,
+    initialLights,
+    'clear'
+  );
+
   return {
     isPlaying: true,
     simSpeed: 1,
@@ -139,32 +183,61 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
 
     fleetConfig: INITIAL_FLEET,
 
+    startPoint: DEFAULT_START,
+    endPoint: DEFAULT_END,
+    activeTripMode: 'car',
+    detailedRoute: initialRoute,
+
     routeTrip: {
       isActive: false,
-      startLandmarkId: 'perumahan_griya',
-      endLandmarkId: 'school_sdn01',
-      vehicleType: 'bus',
-      distanceMeters: 1100,
-      estimatedTimeClearMin: 3.2,
-      estimatedTimeCurrentMin: 7.8,
-      delayMinutes: 4.6,
+      startPoint: DEFAULT_START,
+      endPoint: DEFAULT_END,
+      vehicleType: 'car',
+      detailedRoute: initialRoute,
       currentProgressPct: 0,
+      elapsedTripSeconds: 0,
       isCompleted: false,
+    },
+
+    contextMenu: {
+      isOpen: false,
+      screenX: 0,
+      screenY: 0,
+      point: DEFAULT_START,
     },
 
     activeModal: null,
 
     statsHistory: [
-      { time: 0, congestion: initialSim.stats.congestionPercentage, speed: initialSim.stats.averageSpeedKmh, delay: initialSim.stats.schoolBusDelayMinutes },
+      {
+        time: 0,
+        congestion: initialSim.stats.congestionPercentage,
+        speed: initialSim.stats.averageSpeedKmh,
+        delay: initialSim.stats.schoolBusDelayMinutes,
+      },
     ],
 
     togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
     setSimSpeed: (simSpeed) => set({ simSpeed }),
-    setWeather: (weather) => set({ weather }),
+    setWeather: (weather) => {
+      const state = get();
+      const updatedRoute = calculateDetailedRoute(
+        state.startPoint,
+        state.endPoint,
+        state.vehicles,
+        state.trafficLights,
+        weather
+      );
+      set({ weather, detailedRoute: updatedRoute });
+    },
     setTimeOfDay: (timeOfDay) => set({ timeOfDay }),
     setRainIntensity: (rainIntensity) => set({ rainIntensity }),
     setCameraMode: (cameraMode, vehicleId) => {
-      set({ cameraMode, selectedVehicleId: vehicleId ?? (cameraMode === 'follow_vehicle' ? get().selectedVehicleId : null) });
+      set({
+        cameraMode,
+        selectedVehicleId:
+          vehicleId ?? (cameraMode === 'follow_vehicle' ? get().selectedVehicleId : null),
+      });
     },
     setSelectedVehicleId: (selectedVehicleId) => set({ selectedVehicleId }),
     setActiveModal: (activeModal) => set({ activeModal }),
@@ -179,10 +252,18 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
         get().timeOfDay,
         0.05
       );
+      const updatedRoute = calculateDetailedRoute(
+        get().startPoint,
+        get().endPoint,
+        vehicles,
+        get().trafficLights,
+        get().weather
+      );
       set({
         fleetConfig: updatedConfig,
         vehicles,
         stats,
+        detailedRoute: updatedRoute,
       });
     },
 
@@ -195,7 +276,14 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
         get().timeOfDay,
         0.05
       );
-      set({ vehicles, stats });
+      const updatedRoute = calculateDetailedRoute(
+        get().startPoint,
+        get().endPoint,
+        vehicles,
+        get().trafficLights,
+        get().weather
+      );
+      set({ vehicles, stats, detailedRoute: updatedRoute });
     },
 
     applyPreset: (presetKey: string) => {
@@ -204,7 +292,7 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
       let newTime: TimeOfDay = 'morning_rush';
 
       switch (presetKey) {
-        case 'car_dependent': // Severe private car gridlock
+        case 'car_dependent':
           newConfig = {
             privateCars: 46,
             motorcycles: 48,
@@ -216,7 +304,7 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
           newTime = 'morning_rush';
           break;
 
-        case 'monsoon_gridlock': // Heavy rain + high private vehicle usage
+        case 'monsoon_gridlock':
           newConfig = {
             privateCars: 42,
             motorcycles: 36,
@@ -228,7 +316,7 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
           newTime = 'evening_rush';
           break;
 
-        case 'balanced_town': // Healthy mix of Angkot + Bus
+        case 'balanced_town':
           newConfig = {
             privateCars: 14,
             motorcycles: 20,
@@ -240,7 +328,7 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
           newTime = 'midday';
           break;
 
-        case 'public_transit_mastery': // High transit shift: fluid streets & zero bus delays
+        case 'public_transit_mastery':
           newConfig = {
             privateCars: 6,
             motorcycles: 10,
@@ -252,7 +340,7 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
           newTime = 'morning_rush';
           break;
 
-        case 'night_peace': // Quiet evening night
+        case 'night_peace':
           newConfig = {
             privateCars: 8,
             motorcycles: 12,
@@ -274,51 +362,134 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
         0.05
       );
 
+      const updatedRoute = calculateDetailedRoute(
+        get().startPoint,
+        get().endPoint,
+        vehicles,
+        get().trafficLights,
+        newWeather
+      );
+
       set({
         fleetConfig: newConfig,
         weather: newWeather,
         timeOfDay: newTime,
         vehicles,
         stats,
+        detailedRoute: updatedRoute,
         activeModal: null,
       });
     },
 
-    startTripSimulation: (startLandmarkId, endLandmarkId, vehicleType) => {
-      const startLm = TOWN_LANDMARKS.find((l) => l.id === startLandmarkId) || TOWN_LANDMARKS[0];
-      const endLm = TOWN_LANDMARKS.find((l) => l.id === endLandmarkId) || TOWN_LANDMARKS[1];
+    setTripStartPoint: (point) => {
+      const state = get();
+      const updatedRoute = calculateDetailedRoute(
+        point,
+        state.endPoint,
+        state.vehicles,
+        state.trafficLights,
+        state.weather
+      );
+      set({
+        startPoint: point,
+        detailedRoute: updatedRoute,
+        contextMenu: { ...state.contextMenu, isOpen: false },
+      });
+    },
 
-      // Spawn a designated test vehicle along this route
-      const startRoad = startLm.roadId.split('_to_')[0] || 'sudirman_w';
-      const endRoad = endLm.roadId.split('_to_')[1] || 'merdeka_n';
-      const path = findNodePath(startRoad, endRoad);
+    setTripEndPoint: (point) => {
+      const state = get();
+      const updatedRoute = calculateDetailedRoute(
+        state.startPoint,
+        point,
+        state.vehicles,
+        state.trafficLights,
+        state.weather
+      );
+      set({
+        endPoint: point,
+        detailedRoute: updatedRoute,
+        contextMenu: { ...state.contextMenu, isOpen: false },
+      });
+    },
 
-      const testVehicle = createVehicleInstance(vehicleType, path, `Trip Test (${vehicleType.toUpperCase()})`);
-      const existingVehicles = get().vehicles;
+    swapTripPoints: () => {
+      const state = get();
+      const newStart = state.endPoint;
+      const newEnd = state.startPoint;
+      const updatedRoute = calculateDetailedRoute(
+        newStart,
+        newEnd,
+        state.vehicles,
+        state.trafficLights,
+        state.weather
+      );
+      set({
+        startPoint: newStart,
+        endPoint: newEnd,
+        detailedRoute: updatedRoute,
+      });
+    },
 
-      const currentStats = get().stats;
-      const baseSpeedKmh = vehicleType === 'motorcycle' ? 32 : vehicleType === 'car' ? 30 : 25;
-      const congestionSpeedKmh = Math.max(4, baseSpeedKmh * (1 - currentStats.congestionPercentage / 130));
-      const distanceKm = 1.35;
-      const clearTimeMin = Math.round(((distanceKm / baseSpeedKmh) * 60) * 10) / 10;
-      const currentTimeMin = Math.round(((distanceKm / congestionSpeedKmh) * 60) * 10) / 10;
-      const delay = Math.max(0, Math.round((currentTimeMin - clearTimeMin) * 10) / 10);
+    setActiveTripMode: (activeTripMode) => {
+      set({ activeTripMode });
+    },
+
+    openContextMenu: (screenX, screenY, point) => {
+      set({
+        contextMenu: {
+          isOpen: true,
+          screenX,
+          screenY,
+          point,
+        },
+      });
+    },
+
+    closeContextMenu: () => {
+      set((state) => ({
+        contextMenu: {
+          ...state.contextMenu,
+          isOpen: false,
+        },
+      }));
+    },
+
+    startTripSimulation: (vehicleType) => {
+      const state = get();
+      const vType = vehicleType || state.activeTripMode;
+      const startNode = findNearestRoadNode(state.startPoint.position[0], state.startPoint.position[2]);
+      const endNode = findNearestRoadNode(state.endPoint.position[0], state.endPoint.position[2]);
+      const nodePath = findNodePath(startNode.id, endNode.id);
+
+      const testVehicle = createVehicleInstance(
+        vType,
+        nodePath,
+        `Trip Test (${vType.toUpperCase()})`
+      );
+
+      const updatedRoute = calculateDetailedRoute(
+        state.startPoint,
+        state.endPoint,
+        state.vehicles,
+        state.trafficLights,
+        state.weather
+      );
 
       set({
-        vehicles: [testVehicle, ...existingVehicles],
+        vehicles: [testVehicle, ...state.vehicles],
         selectedVehicleId: testVehicle.id,
         cameraMode: 'follow_vehicle',
+        activeTripMode: vType,
         routeTrip: {
           isActive: true,
-          startLandmarkId,
-          endLandmarkId,
-          vehicleType,
+          startPoint: state.startPoint,
+          endPoint: state.endPoint,
+          vehicleType: vType,
           simulatedVehicleId: testVehicle.id,
-          distanceMeters: 1350,
-          estimatedTimeClearMin: clearTimeMin,
-          estimatedTimeCurrentMin: currentTimeMin,
-          delayMinutes: delay,
+          detailedRoute: updatedRoute,
           currentProgressPct: 0,
+          elapsedTripSeconds: 0,
           isCompleted: false,
         },
       });
@@ -341,7 +512,6 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
       const state = get();
       if (!state.isPlaying) return;
 
-      // Clamp deltaTime for stability and apply sim speed
       const dt = Math.min(0.1, realDeltaTime) * state.simSpeed;
 
       const updatedLights = updateTrafficLights(state.trafficLights, dt);
@@ -353,15 +523,31 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
         dt
       );
 
+      // Re-calculate the live dynamic route ETA every ~0.15s (smoothed)
+      let detailedRoute = state.detailedRoute;
+      detailedRoute = calculateDetailedRoute(
+        state.startPoint,
+        state.endPoint,
+        vehicles,
+        updatedLights,
+        state.weather
+      );
+
       // Check active trip simulation progress
       let routeTrip = state.routeTrip;
       if (routeTrip.isActive && routeTrip.simulatedVehicleId) {
         const testVeh = vehicles.find((v) => v.id === routeTrip.simulatedVehicleId);
         if (testVeh) {
-          const progressPct = Math.min(100, Math.round((testVeh.totalDistanceTraveled / routeTrip.distanceMeters) * 100));
+          const totalDist = detailedRoute.totalDistanceMeters || 1000;
+          const progressPct = Math.min(
+            100,
+            Math.round((testVeh.totalDistanceTraveled / totalDist) * 100)
+          );
           const isDone = progressPct >= 100;
           routeTrip = {
             ...routeTrip,
+            detailedRoute,
+            elapsedTripSeconds: testVeh.totalTravelTime,
             currentProgressPct: progressPct,
             isCompleted: isDone,
           };
@@ -370,21 +556,25 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
 
       // Record rolling history
       let statsHistory = state.statsHistory;
-      if (Math.random() < 0.08) { // throttle history writes
+      if (Math.random() < 0.08) {
         const lastEntry = statsHistory[statsHistory.length - 1];
         const newTime = lastEntry ? lastEntry.time + 1 : 1;
-        statsHistory = [...statsHistory.slice(-24), {
-          time: newTime,
-          congestion: stats.congestionPercentage,
-          speed: stats.averageSpeedKmh,
-          delay: stats.schoolBusDelayMinutes,
-        }];
+        statsHistory = [
+          ...statsHistory.slice(-24),
+          {
+            time: newTime,
+            congestion: stats.congestionPercentage,
+            speed: stats.averageSpeedKmh,
+            delay: stats.schoolBusDelayMinutes,
+          },
+        ];
       }
 
       set({
         trafficLights: updatedLights,
         vehicles,
         stats,
+        detailedRoute,
         routeTrip,
         statsHistory,
       });

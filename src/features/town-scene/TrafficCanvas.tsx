@@ -67,7 +67,10 @@ export const TrafficCanvas: React.FC = () => {
   const env = getEnvironmentSettings();
 
   return (
-    <div className="relative w-full h-full bg-slate-950">
+    <div
+      className="relative w-full h-full bg-slate-950"
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <Canvas
         shadows
         camera={{ position: [0, 115, 80], fov: 42, near: 0.5, far: 500 }}

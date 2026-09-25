@@ -3,7 +3,8 @@ import { TrafficCanvas } from './features/town-scene/TrafficCanvas';
 import { TopNav } from './features/ui/TopNav';
 import { QuickControlsHUD } from './features/ui/QuickControlsHUD';
 import { StreetPerspectiveDock } from './features/ui/StreetPerspectiveDock';
-import { TripSimulationBanner } from './features/ui/TripSimulationBanner';
+import { LiveTripCalculatorDock } from './features/ui/LiveTripCalculatorDock';
+import { TownContextMenu } from './features/ui/TownContextMenu';
 import { VehicleFleetModal } from './features/modals/VehicleFleetModal';
 import { EnvironmentTimeModal } from './features/modals/EnvironmentTimeModal';
 import { RoutePlannerModal } from './features/route-marking/RoutePlannerModal';
@@ -13,22 +14,25 @@ import { ScenarioPresetsModal } from './features/stats-page/ScenarioPresetsModal
 export default function App() {
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none">
-      {/* 3D WebGL Scene */}
+      {/* 3D WebGL Town Scene with Right-Click Support */}
       <TrafficCanvas />
 
-      {/* Top 3-Zone Navigation Header */}
+      {/* Top Navigation Bar */}
       <TopNav />
 
-      {/* Street & Camera Perspective Switcher Dock */}
+      {/* Street Perspective & Camera Switcher Dock */}
       <StreetPerspectiveDock />
 
-      {/* Active Trip Follow Banner (if trip simulation is active) */}
-      <TripSimulationBanner />
+      {/* Live Dynamic Trip Calculator Panel */}
+      <LiveTripCalculatorDock />
 
-      {/* Floating Bottom HUD */}
+      {/* 3D Right-Click Context Menu */}
+      <TownContextMenu />
+
+      {/* Floating Bottom Simulation HUD */}
       <QuickControlsHUD />
 
-      {/* Interactive Modals & Stats Views */}
+      {/* Modals & Analytics Views */}
       <VehicleFleetModal />
       <EnvironmentTimeModal />
       <RoutePlannerModal />
