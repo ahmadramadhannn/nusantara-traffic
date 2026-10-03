@@ -4,6 +4,12 @@ import { useTrafficStore } from '../../store/useTrafficStore';
 import { TownEnvironment } from './TownEnvironment';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
 import { CameraController } from '../camera-controls/CameraController';
+import {
+  PedestrianCharacter,
+  PelicanPost,
+  InteractiveZebraCrosswalk,
+} from '../pedestrians/PedestrianMesh';
+import { CROSSWALK_LOCATIONS } from '../pedestrians/pedestrianEngine';
 
 const SimulationLoop: React.FC = () => {
   const tickSimulation = useTrafficStore((s) => s.tickSimulation);
@@ -17,6 +23,8 @@ const SimulationLoop: React.FC = () => {
 
 export const TrafficCanvas: React.FC = () => {
   const vehicles = useTrafficStore((s) => s.vehicles);
+  const pedestrians = useTrafficStore((s) => s.pedestrians);
+  const trafficLights = useTrafficStore((s) => s.trafficLights);
   const selectedVehicleId = useTrafficStore((s) => s.selectedVehicleId);
   const timeOfDay = useTrafficStore((s) => s.timeOfDay);
   const weather = useTrafficStore((s) => s.weather);
@@ -102,6 +110,27 @@ export const TrafficCanvas: React.FC = () => {
         <Suspense fallback={null}>
           <CameraController />
           <TownEnvironment />
+
+          {/* Interactive Pelican Crosswalk Posts & Zebra Markings */}
+          {CROSSWALK_LOCATIONS.map((loc) => (
+            <React.Fragment key={loc.id}>
+              <InteractiveZebraCrosswalk
+                location={loc}
+                light={trafficLights[loc.intersectionId]}
+              />
+              <PelicanPost
+                position={loc.pelicanPos}
+                rotation={loc.angle}
+                intersectionId={loc.intersectionId}
+                light={trafficLights[loc.intersectionId]}
+              />
+            </React.Fragment>
+          ))}
+
+          {/* 3D Pedestrians at Zebra Crossings */}
+          {pedestrians.map((ped) => (
+            <PedestrianCharacter key={ped.id} pedestrian={ped} />
+          ))}
 
           {/* Render All Active Vehicles */}
           {vehicles.map((veh) => (

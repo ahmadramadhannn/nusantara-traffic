@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTrafficStore } from '../../store/useTrafficStore';
-import { BarChart3, SlidersHorizontal, Compass, CloudSun } from 'lucide-react';
+import { BarChart3, SlidersHorizontal, Compass, CloudSun, RotateCw } from 'lucide-react';
 import { CameraViewMode } from '../../types';
 
 export const TopNav: React.FC = () => {
@@ -49,6 +49,19 @@ export const TopNav: React.FC = () => {
 
       {/* Zone 3: Primary modal action triggers */}
       <div className="flex items-center gap-2">
+        <button
+          onClick={() => setActiveModal(activeModal === 'traffic_lights' ? null : 'traffic_lights')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
+            activeModal === 'traffic_lights'
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+              : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:bg-slate-800 hover:text-white'
+          }`}
+          title="Pengatur APILL / Traffic Signal FSM"
+        >
+          <RotateCw className="w-3.5 h-3.5 text-amber-400" />
+          <span>Sinyal APILL (FSM)</span>
+        </button>
+
         <button
           onClick={() => setActiveModal(activeModal === 'environment' ? null : 'environment')}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${

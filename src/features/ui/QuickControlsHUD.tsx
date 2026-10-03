@@ -4,11 +4,13 @@ import {
   Play,
   Pause,
   RotateCcw,
+  RotateCw,
   Sparkles,
   AlertTriangle,
   Clock,
   Gauge,
   Users,
+  Footprints,
 } from 'lucide-react';
 
 export const QuickControlsHUD: React.FC = () => {
@@ -20,6 +22,25 @@ export const QuickControlsHUD: React.FC = () => {
   const stats = useTrafficStore((s) => s.stats);
   const setActiveModal = useTrafficStore((s) => s.setActiveModal);
   const applyPreset = useTrafficStore((s) => s.applyPreset);
+  const trafficLights = useTrafficStore((s) => s.trafficLights);
+  const requestPedestrianCrossing = useTrafficStore((s) => s.requestPedestrianCrossing);
+
+  const activeCrossingLight = Object.values(trafficLights).find(
+    (l) => l.fsmState === 'PEDESTRIAN_CROSSING'
+  );
+  const pendingCrossingLight = Object.values(trafficLights).find(
+    (l) => l.pedestrianCallActive && l.fsmState !== 'PEDESTRIAN_CROSSING'
+  );
+
+  const handleQuickPedestrianClick = () => {
+    const nextTarget =
+      Object.values(trafficLights).find(
+        (l) => !l.pedestrianCallActive && l.fsmState !== 'PEDESTRIAN_CROSSING'
+      ) || Object.values(trafficLights)[0];
+    if (nextTarget) {
+      requestPedestrianCrossing(nextTarget.intersectionId);
+    }
+  };
 
   const getCongestionColor = (pct: number) => {
     if (pct < 30) return 'text-emerald-400';
@@ -131,8 +152,39 @@ export const QuickControlsHUD: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Quick Presets Shortcut */}
+        {/* Right: Quick Presets & FSM Signals Shortcut */}
         <div className="flex items-center gap-2">
+          {/* Quick Pedestrian Crosswalk Button */}
+          <button
+            onClick={handleQuickPedestrianClick}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border transition-all ${
+              activeCrossingLight
+                ? 'bg-emerald-950 text-emerald-300 border-emerald-500/60 shadow-lg shadow-emerald-500/20 animate-pulse'
+                : pendingCrossingLight
+                ? 'bg-amber-950 text-amber-300 border-amber-500/60'
+                : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-800'
+            }`}
+            title="Picu Penyeberangan Pejalan Kaki (All-Red Mode di Simpang)"
+          >
+            <Footprints className={`w-3.5 h-3.5 ${activeCrossingLight ? 'text-emerald-400' : 'text-emerald-400'}`} />
+            <span className="hidden sm:inline">
+              {activeCrossingLight
+                ? `Crosswalk (${activeCrossingLight.remainingTime}s)`
+                : pendingCrossingLight
+                ? 'Ped Call Pending'
+                : 'Minta Seberang'}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveModal('traffic_lights')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium rounded-xl border border-slate-800 transition-colors"
+            title="Pengatur Lampu Lalu Lintas / Sinyal APILL (FSM)"
+          >
+            <RotateCw className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">Sinyal FSM</span>
+          </button>
+
           <button
             onClick={() => setActiveModal('presets')}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium rounded-xl border border-slate-800 transition-colors"

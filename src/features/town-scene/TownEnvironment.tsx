@@ -222,32 +222,6 @@ export const TownEnvironment: React.FC = () => {
         </mesh>
       </group>
 
-      {/* 3. Four Intersections Zebra Crossings */}
-      {[
-        [-35, -25],
-        [35, -25],
-        [-35, 35],
-        [35, 35],
-      ].map(([x, z], idx) => (
-        <group key={idx} position={[x, 0.04, z]}>
-          <mesh position={[4.5, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[1.6, 6.0]} />
-            <meshBasicMaterial color="#F8FAFC" transparent opacity={0.85} />
-          </mesh>
-          <mesh position={[-4.5, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[1.6, 6.0]} />
-            <meshBasicMaterial color="#F8FAFC" transparent opacity={0.85} />
-          </mesh>
-          <mesh position={[0, 0, -4.5]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
-            <planeGeometry args={[1.6, 6.0]} />
-            <meshBasicMaterial color="#F8FAFC" transparent opacity={0.85} />
-          </mesh>
-          <mesh position={[0, 0, 4.5]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
-            <planeGeometry args={[1.6, 6.0]} />
-            <meshBasicMaterial color="#F8FAFC" transparent opacity={0.85} />
-          </mesh>
-        </group>
-      ))}
 
       {/* 4. Active Indonesian L-Pole Cantilever Traffic Lights (Tiang APILL Mast-Arm) & Stop Lines */}
       {[
@@ -257,411 +231,575 @@ export const TownEnvironment: React.FC = () => {
         { id: 'int_se', x: 35, z: 35 },
       ].map(({ id, x, z }) => {
         const light = trafficLights[id];
-        const isEWGreen = light?.activeDirection === 'EW' && !light?.isYellow;
-        const isEWYellow = light?.activeDirection === 'EW' && light?.isYellow;
-        const isEWRed = !isEWGreen && !isEWYellow;
-
-        const isNSGreen = light?.activeDirection === 'NS' && !light?.isYellow;
-        const isNSYellow = light?.activeDirection === 'NS' && light?.isYellow;
-        const isNSRed = !isNSGreen && !isNSYellow;
+        const ewSignal = light?.ewSignal || (light?.activeDirection === 'EW' ? (light.isYellow ? 'YELLOW' : 'GREEN') : 'RED');
+        const nsSignal = light?.nsSignal || (light?.activeDirection === 'NS' ? (light.isYellow ? 'YELLOW' : 'GREEN') : 'RED');
+        const remaining = light?.remainingTime ?? 10;
 
         return (
           <group key={id} position={[x, 0, z]}>
-            {/* Soft point light for ambient signal glow at the intersection */}
-            <pointLight
-              position={[0, 4.5, 0]}
-              intensity={timeOfDay === 'night' ? 2.5 : 0.8}
-              distance={18}
-              color={light?.isYellow ? '#FACC15' : light?.activeDirection === 'EW' ? '#22C55E' : '#EF4444'}
-            />
-
-            {/* A. Glowing Dynamic Asphalt Stop Lines (Indonesian Road Markings) */}
-            {/* 1. Eastbound Approach Stop Line (North lane Z = -1.75, at X = -6.0) */}
+            {/* A. Indonesian Road Markings: Stop Line, Zebra Crossing, and RHK (Ruang Henti Khusus Motor) */}
+            
+            {/* 1. Eastbound Approach (North lane Z = -1.75, at X = -6.0) */}
+            {/* White Stop Bar */}
             <mesh position={[-6.0, 0.05, -1.75]} rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[0.5, 3.2]} />
-              <meshBasicMaterial
-                color={isEWGreen ? '#22C55E' : isEWYellow ? '#FACC15' : '#EF4444'}
-                transparent
-                opacity={0.95}
-              />
+              <planeGeometry args={[0.45, 3.2]} />
+              <meshBasicMaterial color="#FFFFFF" transparent opacity={0.95} />
             </mesh>
+            {/* Red Motorcycle Advance Box (RHK) */}
+            <mesh position={[-8.2, 0.04, -1.75]} rotation={[-Math.PI / 2, 0, 0]}>
+              <planeGeometry args={[3.8, 3.2]} />
+              <meshBasicMaterial color="#991B1B" transparent opacity={0.75} />
+            </mesh>
+            {/* Zebra Pedestrian Crossing Eastbound */}
+            {[-1.2, -0.6, 0, 0.6, 1.2].map((off, idx) => (
+              <mesh key={`z_eb_${idx}`} position={[-4.8, 0.045, -1.75 + off]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[1.4, 0.35]} />
+                <meshBasicMaterial color="#FFFFFF" transparent opacity={0.9} />
+              </mesh>
+            ))}
 
-            {/* 2. Westbound Approach Stop Line (South lane Z = 1.75, at X = 6.0) */}
+            {/* 2. Westbound Approach (South lane Z = 1.75, at X = 6.0) */}
+            {/* White Stop Bar */}
             <mesh position={[6.0, 0.05, 1.75]} rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[0.5, 3.2]} />
-              <meshBasicMaterial
-                color={isEWGreen ? '#22C55E' : isEWYellow ? '#FACC15' : '#EF4444'}
-                transparent
-                opacity={0.95}
-              />
+              <planeGeometry args={[0.45, 3.2]} />
+              <meshBasicMaterial color="#FFFFFF" transparent opacity={0.95} />
             </mesh>
+            {/* Red Motorcycle Advance Box (RHK) */}
+            <mesh position={[8.2, 0.04, 1.75]} rotation={[-Math.PI / 2, 0, 0]}>
+              <planeGeometry args={[3.8, 3.2]} />
+              <meshBasicMaterial color="#991B1B" transparent opacity={0.75} />
+            </mesh>
+            {/* Zebra Pedestrian Crossing Westbound */}
+            {[-1.2, -0.6, 0, 0.6, 1.2].map((off, idx) => (
+              <mesh key={`z_wb_${idx}`} position={[4.8, 0.045, 1.75 + off]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[1.4, 0.35]} />
+                <meshBasicMaterial color="#FFFFFF" transparent opacity={0.9} />
+              </mesh>
+            ))}
 
-            {/* 3. Southbound Approach Stop Line (East lane X = 1.75, at Z = -6.0) */}
+            {/* 3. Southbound Approach (East lane X = 1.75, at Z = -6.0) */}
+            {/* White Stop Bar */}
             <mesh position={[1.75, 0.05, -6.0]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
-              <planeGeometry args={[0.5, 3.2]} />
-              <meshBasicMaterial
-                color={isNSGreen ? '#22C55E' : isNSYellow ? '#FACC15' : '#EF4444'}
-                transparent
-                opacity={0.95}
-              />
+              <planeGeometry args={[0.45, 3.2]} />
+              <meshBasicMaterial color="#FFFFFF" transparent opacity={0.95} />
             </mesh>
+            {/* Red Motorcycle Advance Box (RHK) */}
+            <mesh position={[1.75, 0.04, -8.2]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
+              <planeGeometry args={[3.8, 3.2]} />
+              <meshBasicMaterial color="#991B1B" transparent opacity={0.75} />
+            </mesh>
+            {/* Zebra Pedestrian Crossing Southbound */}
+            {[-1.2, -0.6, 0, 0.6, 1.2].map((off, idx) => (
+              <mesh key={`z_sb_${idx}`} position={[1.75 + off, 0.045, -4.8]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
+                <planeGeometry args={[1.4, 0.35]} />
+                <meshBasicMaterial color="#FFFFFF" transparent opacity={0.9} />
+              </mesh>
+            ))}
 
-            {/* 4. Northbound Approach Stop Line (West lane X = -1.75, at Z = 6.0) */}
+            {/* 4. Northbound Approach (West lane X = -1.75, at Z = 6.0) */}
+            {/* White Stop Bar */}
             <mesh position={[-1.75, 0.05, 6.0]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
-              <planeGeometry args={[0.5, 3.2]} />
-              <meshBasicMaterial
-                color={isNSGreen ? '#22C55E' : isNSYellow ? '#FACC15' : '#EF4444'}
-                transparent
-                opacity={0.95}
-              />
+              <planeGeometry args={[0.45, 3.2]} />
+              <meshBasicMaterial color="#FFFFFF" transparent opacity={0.95} />
             </mesh>
+            {/* Red Motorcycle Advance Box (RHK) */}
+            <mesh position={[-1.75, 0.04, 8.2]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
+              <planeGeometry args={[3.8, 3.2]} />
+              <meshBasicMaterial color="#991B1B" transparent opacity={0.75} />
+            </mesh>
+            {/* Zebra Pedestrian Crossing Northbound */}
+            {[-1.2, -0.6, 0, 0.6, 1.2].map((off, idx) => (
+              <mesh key={`z_nb_${idx}`} position={[-1.75 + off, 0.045, 4.8]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
+                <planeGeometry args={[1.4, 0.35]} />
+                <meshBasicMaterial color="#FFFFFF" transparent opacity={0.9} />
+              </mesh>
+            ))}
 
             {/* B. Four Authentic Indonesian Cantilever Mast-Arm APILL Poles */}
 
-            {/* 1. Eastbound Approach Mast Arm (Pole on North Sidewalk at X=-6.5, Z=-4.8) */}
+            {/* 1. Eastbound Approach (Pole on North Sidewalk at X=-6.5, Z=-4.8) */}
             <group position={[-6.5, 0, -4.8]}>
-              {/* Pole Base with warning stripes */}
-              <mesh position={[0, 0.3, 0]} castShadow>
-                <cylinderGeometry args={[0.22, 0.26, 0.6, 12]} />
+              <mesh position={[0, 0.35, 0]} castShadow>
+                <cylinderGeometry args={[0.22, 0.26, 0.7, 12]} />
                 <meshStandardMaterial color="#EAB308" roughness={0.4} />
               </mesh>
-              {/* Vertical Column */}
               <mesh position={[0, 3.0, 0]} castShadow>
                 <cylinderGeometry args={[0.13, 0.16, 6.0, 10]} />
                 <meshStandardMaterial color="#64748B" metalness={0.7} roughness={0.3} />
               </mesh>
-              {/* Cantilever Horizontal Arm reaching South over Eastbound lane (to Z=+3.05 -> Z=-1.75 in intersection coords) */}
               <mesh position={[0, 5.8, 1.55]} rotation={[Math.PI / 2, 0, 0]} castShadow>
                 <cylinderGeometry args={[0.09, 0.11, 3.1, 10]} />
                 <meshStandardMaterial color="#64748B" metalness={0.7} roughness={0.3} />
               </mesh>
 
-              {/* Overhead Signal Head over lane, facing West (rotation -PI/2) towards oncoming Eastbound traffic */}
+              {/* Overhead Signal Head facing West towards Eastbound traffic */}
               <group position={[0, 5.3, 3.05]} rotation={[0, -Math.PI / 2, 0]}>
-                {/* Signal Housing Backplate */}
                 <mesh castShadow>
-                  <boxGeometry args={[0.65, 1.8, 0.38]} />
-                  <meshStandardMaterial color="#090D16" roughness={0.5} />
+                  <boxGeometry args={[0.66, 1.85, 0.36]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.5} />
                 </mesh>
-                <mesh position={[0, 0, -0.05]}>
-                  <boxGeometry args={[0.82, 1.95, 0.05]} />
-                  <meshStandardMaterial color="#F59E0B" roughness={0.6} />
+                <mesh position={[0, 0, -0.06]}>
+                  <boxGeometry args={[0.82, 2.02, 0.04]} />
+                  <meshStandardMaterial color="#F59E0B" roughness={0.5} />
                 </mesh>
-                {/* Red Light + Visor */}
-                <mesh position={[0, 0.55, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                {/* Red Lamp */}
+                <mesh position={[0, 0.55, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isEWRed ? '#EF4444' : '#450A0A'}
-                    emissive={isEWRed ? '#EF4444' : '#000000'}
-                    emissiveIntensity={isEWRed ? 5.0 : 0}
-                    roughness={0.2}
+                    color={ewSignal === 'RED' ? '#EF4444' : '#141720'}
+                    emissive={ewSignal === 'RED' ? '#EF4444' : '#000000'}
+                    emissiveIntensity={ewSignal === 'RED' ? 2.4 : 0}
+                    roughness={ewSignal === 'RED' ? 0.2 : 0.4}
                   />
                 </mesh>
-                {/* Yellow Light + Visor */}
-                <mesh position={[0, 0.0, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                <mesh position={[0, 0.72, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+                {/* Yellow Lamp */}
+                <mesh position={[0, 0.0, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isEWYellow ? '#FACC15' : '#422006'}
-                    emissive={isEWYellow ? '#FACC15' : '#000000'}
-                    emissiveIntensity={isEWYellow ? 5.0 : 0}
-                    roughness={0.2}
+                    color={ewSignal === 'YELLOW' ? '#F59E0B' : '#141720'}
+                    emissive={ewSignal === 'YELLOW' ? '#F59E0B' : '#000000'}
+                    emissiveIntensity={ewSignal === 'YELLOW' ? 2.4 : 0}
+                    roughness={ewSignal === 'YELLOW' ? 0.2 : 0.4}
                   />
                 </mesh>
-                {/* Green Light + Visor */}
-                <mesh position={[0, -0.55, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                <mesh position={[0, 0.17, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+                {/* Green Lamp */}
+                <mesh position={[0, -0.55, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isEWGreen ? '#22C55E' : '#052E16'}
-                    emissive={isEWGreen ? '#22C55E' : '#000000'}
-                    emissiveIntensity={isEWGreen ? 5.0 : 0}
-                    roughness={0.2}
+                    color={ewSignal === 'GREEN' ? '#10B981' : '#141720'}
+                    emissive={ewSignal === 'GREEN' ? '#10B981' : '#000000'}
+                    emissiveIntensity={ewSignal === 'GREEN' ? 2.4 : 0}
+                    roughness={ewSignal === 'GREEN' ? 0.2 : 0.4}
                   />
                 </mesh>
+                <mesh position={[0, -0.38, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+
+                {/* Indonesian Digital Countdown Timer Display */}
+                <group position={[0.62, 0.15, 0]}>
+                  <mesh castShadow>
+                    <boxGeometry args={[0.54, 0.54, 0.3]} />
+                    <meshStandardMaterial color="#0A0E17" roughness={0.5} />
+                  </mesh>
+                  <mesh position={[0, 0, -0.04]}>
+                    <boxGeometry args={[0.64, 0.64, 0.04]} />
+                    <meshStandardMaterial color="#F59E0B" roughness={0.5} />
+                  </mesh>
+                  <mesh position={[0, 0, 0.16]}>
+                    <planeGeometry args={[0.44, 0.44]} />
+                    <meshBasicMaterial color="#020617" />
+                  </mesh>
+                  <mesh position={[0, 0, 0.17]}>
+                    <planeGeometry args={[0.36, 0.36]} />
+                    <meshBasicMaterial color={ewSignal === 'GREEN' ? '#10B981' : ewSignal === 'YELLOW' ? '#F59E0B' : '#EF4444'} />
+                  </mesh>
+                </group>
               </group>
 
-              {/* Lower Auxiliary Signal Head on Pole facing West */}
+              {/* Lower Auxiliary Signal Head on Pole */}
               <group position={[0, 2.6, 0.25]} rotation={[0, -Math.PI / 2, 0]}>
                 <mesh>
-                  <boxGeometry args={[0.42, 1.2, 0.25]} />
-                  <meshStandardMaterial color="#090D16" />
+                  <boxGeometry args={[0.38, 1.15, 0.22]} />
+                  <meshStandardMaterial color="#0A0E17" />
                 </mesh>
-                <mesh position={[0, 0.35, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
+                <mesh position={[0, 0.34, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
                   <meshStandardMaterial
-                    color={isEWRed ? '#EF4444' : '#450A0A'}
-                    emissive={isEWRed ? '#EF4444' : '#000000'}
-                    emissiveIntensity={isEWRed ? 4.0 : 0}
+                    color={ewSignal === 'RED' ? '#EF4444' : '#141720'}
+                    emissive={ewSignal === 'RED' ? '#EF4444' : '#000000'}
+                    emissiveIntensity={ewSignal === 'RED' ? 2.0 : 0}
                   />
                 </mesh>
-                <mesh position={[0, 0.0, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
+                <mesh position={[0, 0.0, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
                   <meshStandardMaterial
-                    color={isEWYellow ? '#FACC15' : '#422006'}
-                    emissive={isEWYellow ? '#FACC15' : '#000000'}
-                    emissiveIntensity={isEWYellow ? 4.0 : 0}
+                    color={ewSignal === 'YELLOW' ? '#F59E0B' : '#141720'}
+                    emissive={ewSignal === 'YELLOW' ? '#F59E0B' : '#000000'}
+                    emissiveIntensity={ewSignal === 'YELLOW' ? 2.0 : 0}
                   />
                 </mesh>
-                <mesh position={[0, -0.35, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
+                <mesh position={[0, -0.34, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
                   <meshStandardMaterial
-                    color={isEWGreen ? '#22C55E' : '#052E16'}
-                    emissive={isEWGreen ? '#22C55E' : '#000000'}
-                    emissiveIntensity={isEWGreen ? 4.0 : 0}
+                    color={ewSignal === 'GREEN' ? '#10B981' : '#141720'}
+                    emissive={ewSignal === 'GREEN' ? '#10B981' : '#000000'}
+                    emissiveIntensity={ewSignal === 'GREEN' ? 2.0 : 0}
                   />
                 </mesh>
               </group>
             </group>
 
-            {/* 2. Westbound Approach Mast Arm (Pole on South Sidewalk at X=6.5, Z=4.8) */}
+            {/* 2. Westbound Approach (Pole on South Sidewalk at X=6.5, Z=4.8) */}
             <group position={[6.5, 0, 4.8]}>
-              {/* Pole Base */}
-              <mesh position={[0, 0.3, 0]} castShadow>
-                <cylinderGeometry args={[0.22, 0.26, 0.6, 12]} />
+              <mesh position={[0, 0.35, 0]} castShadow>
+                <cylinderGeometry args={[0.22, 0.26, 0.7, 12]} />
                 <meshStandardMaterial color="#EAB308" roughness={0.4} />
               </mesh>
-              {/* Column */}
               <mesh position={[0, 3.0, 0]} castShadow>
                 <cylinderGeometry args={[0.13, 0.16, 6.0, 10]} />
                 <meshStandardMaterial color="#64748B" metalness={0.7} roughness={0.3} />
               </mesh>
-              {/* Cantilever Arm reaching North over Westbound lane (to Z=-3.05 -> Z=1.75 in intersection coords) */}
               <mesh position={[0, 5.8, -1.55]} rotation={[Math.PI / 2, 0, 0]} castShadow>
                 <cylinderGeometry args={[0.09, 0.11, 3.1, 10]} />
                 <meshStandardMaterial color="#64748B" metalness={0.7} roughness={0.3} />
               </mesh>
 
-              {/* Overhead Signal Head facing East (rotation +PI/2) towards oncoming Westbound traffic */}
+              {/* Overhead Signal Head facing East towards Westbound traffic */}
               <group position={[0, 5.3, -3.05]} rotation={[0, Math.PI / 2, 0]}>
                 <mesh castShadow>
-                  <boxGeometry args={[0.65, 1.8, 0.38]} />
-                  <meshStandardMaterial color="#090D16" roughness={0.5} />
+                  <boxGeometry args={[0.66, 1.85, 0.36]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.5} />
                 </mesh>
-                <mesh position={[0, 0, -0.05]}>
-                  <boxGeometry args={[0.82, 1.95, 0.05]} />
-                  <meshStandardMaterial color="#F59E0B" roughness={0.6} />
+                <mesh position={[0, 0, -0.06]}>
+                  <boxGeometry args={[0.82, 2.02, 0.04]} />
+                  <meshStandardMaterial color="#F59E0B" roughness={0.5} />
                 </mesh>
-                <mesh position={[0, 0.55, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                {/* Red Lamp */}
+                <mesh position={[0, 0.55, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isEWRed ? '#EF4444' : '#450A0A'}
-                    emissive={isEWRed ? '#EF4444' : '#000000'}
-                    emissiveIntensity={isEWRed ? 5.0 : 0}
+                    color={ewSignal === 'RED' ? '#EF4444' : '#141720'}
+                    emissive={ewSignal === 'RED' ? '#EF4444' : '#000000'}
+                    emissiveIntensity={ewSignal === 'RED' ? 2.4 : 0}
+                    roughness={ewSignal === 'RED' ? 0.2 : 0.4}
                   />
                 </mesh>
-                <mesh position={[0, 0.0, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                <mesh position={[0, 0.72, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+                {/* Yellow Lamp */}
+                <mesh position={[0, 0.0, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isEWYellow ? '#FACC15' : '#422006'}
-                    emissive={isEWYellow ? '#FACC15' : '#000000'}
-                    emissiveIntensity={isEWYellow ? 5.0 : 0}
+                    color={ewSignal === 'YELLOW' ? '#F59E0B' : '#141720'}
+                    emissive={ewSignal === 'YELLOW' ? '#F59E0B' : '#000000'}
+                    emissiveIntensity={ewSignal === 'YELLOW' ? 2.4 : 0}
+                    roughness={ewSignal === 'YELLOW' ? 0.2 : 0.4}
                   />
                 </mesh>
-                <mesh position={[0, -0.55, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                <mesh position={[0, 0.17, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+                {/* Green Lamp */}
+                <mesh position={[0, -0.55, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isEWGreen ? '#22C55E' : '#052E16'}
-                    emissive={isEWGreen ? '#22C55E' : '#000000'}
-                    emissiveIntensity={isEWGreen ? 5.0 : 0}
+                    color={ewSignal === 'GREEN' ? '#10B981' : '#141720'}
+                    emissive={ewSignal === 'GREEN' ? '#10B981' : '#000000'}
+                    emissiveIntensity={ewSignal === 'GREEN' ? 2.4 : 0}
+                    roughness={ewSignal === 'GREEN' ? 0.2 : 0.4}
                   />
                 </mesh>
+                <mesh position={[0, -0.38, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+
+                {/* Digital Countdown Timer */}
+                <group position={[0.62, 0.15, 0]}>
+                  <mesh castShadow>
+                    <boxGeometry args={[0.54, 0.54, 0.3]} />
+                    <meshStandardMaterial color="#0A0E17" roughness={0.5} />
+                  </mesh>
+                  <mesh position={[0, 0, -0.04]}>
+                    <boxGeometry args={[0.64, 0.64, 0.04]} />
+                    <meshStandardMaterial color="#F59E0B" roughness={0.5} />
+                  </mesh>
+                  <mesh position={[0, 0, 0.16]}>
+                    <planeGeometry args={[0.44, 0.44]} />
+                    <meshBasicMaterial color="#020617" />
+                  </mesh>
+                  <mesh position={[0, 0, 0.17]}>
+                    <planeGeometry args={[0.36, 0.36]} />
+                    <meshBasicMaterial color={ewSignal === 'GREEN' ? '#10B981' : ewSignal === 'YELLOW' ? '#F59E0B' : '#EF4444'} />
+                  </mesh>
+                </group>
               </group>
 
-              {/* Lower Auxiliary Signal Head facing East */}
+              {/* Lower Auxiliary Signal Head */}
               <group position={[0, 2.6, -0.25]} rotation={[0, Math.PI / 2, 0]}>
                 <mesh>
-                  <boxGeometry args={[0.42, 1.2, 0.25]} />
-                  <meshStandardMaterial color="#090D16" />
+                  <boxGeometry args={[0.38, 1.15, 0.22]} />
+                  <meshStandardMaterial color="#0A0E17" />
                 </mesh>
-                <mesh position={[0, 0.35, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
+                <mesh position={[0, 0.34, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
                   <meshStandardMaterial
-                    color={isEWRed ? '#EF4444' : '#450A0A'}
-                    emissive={isEWRed ? '#EF4444' : '#000000'}
-                    emissiveIntensity={isEWRed ? 4.0 : 0}
+                    color={ewSignal === 'RED' ? '#EF4444' : '#141720'}
+                    emissive={ewSignal === 'RED' ? '#EF4444' : '#000000'}
+                    emissiveIntensity={ewSignal === 'RED' ? 2.0 : 0}
                   />
                 </mesh>
-                <mesh position={[0, 0.0, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
+                <mesh position={[0, 0.0, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
                   <meshStandardMaterial
-                    color={isEWYellow ? '#FACC15' : '#422006'}
-                    emissive={isEWYellow ? '#FACC15' : '#000000'}
-                    emissiveIntensity={isEWYellow ? 4.0 : 0}
+                    color={ewSignal === 'YELLOW' ? '#F59E0B' : '#141720'}
+                    emissive={ewSignal === 'YELLOW' ? '#F59E0B' : '#000000'}
+                    emissiveIntensity={ewSignal === 'YELLOW' ? 2.0 : 0}
                   />
                 </mesh>
-                <mesh position={[0, -0.35, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
+                <mesh position={[0, -0.34, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
                   <meshStandardMaterial
-                    color={isEWGreen ? '#22C55E' : '#052E16'}
-                    emissive={isEWGreen ? '#22C55E' : '#000000'}
-                    emissiveIntensity={isEWGreen ? 4.0 : 0}
+                    color={ewSignal === 'GREEN' ? '#10B981' : '#141720'}
+                    emissive={ewSignal === 'GREEN' ? '#10B981' : '#000000'}
+                    emissiveIntensity={ewSignal === 'GREEN' ? 2.0 : 0}
                   />
                 </mesh>
               </group>
             </group>
 
-            {/* 3. Southbound Approach Mast Arm (Pole on East Sidewalk at X=4.8, Z=-6.5) */}
+            {/* 3. Southbound Approach (Pole on East Sidewalk at X=4.8, Z=-6.5) */}
             <group position={[4.8, 0, -6.5]}>
-              {/* Pole Base */}
-              <mesh position={[0, 0.3, 0]} castShadow>
-                <cylinderGeometry args={[0.22, 0.26, 0.6, 12]} />
+              <mesh position={[0, 0.35, 0]} castShadow>
+                <cylinderGeometry args={[0.22, 0.26, 0.7, 12]} />
                 <meshStandardMaterial color="#EAB308" roughness={0.4} />
               </mesh>
-              {/* Column */}
               <mesh position={[0, 3.0, 0]} castShadow>
                 <cylinderGeometry args={[0.13, 0.16, 6.0, 10]} />
                 <meshStandardMaterial color="#64748B" metalness={0.7} roughness={0.3} />
               </mesh>
-              {/* Cantilever Arm reaching West over Southbound lane (to X=-3.05 -> X=1.75 in intersection coords) */}
               <mesh position={[-1.55, 5.8, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
                 <cylinderGeometry args={[0.09, 0.11, 3.1, 10]} />
                 <meshStandardMaterial color="#64748B" metalness={0.7} roughness={0.3} />
               </mesh>
 
-              {/* Overhead Signal Head facing North (rotation Math.PI) towards oncoming Southbound traffic */}
+              {/* Overhead Signal Head facing North towards Southbound traffic */}
               <group position={[-3.05, 5.3, 0]} rotation={[0, Math.PI, 0]}>
                 <mesh castShadow>
-                  <boxGeometry args={[0.65, 1.8, 0.38]} />
-                  <meshStandardMaterial color="#090D16" roughness={0.5} />
+                  <boxGeometry args={[0.66, 1.85, 0.36]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.5} />
                 </mesh>
-                <mesh position={[0, 0, -0.05]}>
-                  <boxGeometry args={[0.82, 1.95, 0.05]} />
-                  <meshStandardMaterial color="#F59E0B" roughness={0.6} />
+                <mesh position={[0, 0, -0.06]}>
+                  <boxGeometry args={[0.82, 2.02, 0.04]} />
+                  <meshStandardMaterial color="#F59E0B" roughness={0.5} />
                 </mesh>
-                <mesh position={[0, 0.55, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                {/* Red Lamp */}
+                <mesh position={[0, 0.55, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isNSRed ? '#EF4444' : '#450A0A'}
-                    emissive={isNSRed ? '#EF4444' : '#000000'}
-                    emissiveIntensity={isNSRed ? 5.0 : 0}
+                    color={nsSignal === 'RED' ? '#EF4444' : '#141720'}
+                    emissive={nsSignal === 'RED' ? '#EF4444' : '#000000'}
+                    emissiveIntensity={nsSignal === 'RED' ? 2.4 : 0}
+                    roughness={nsSignal === 'RED' ? 0.2 : 0.4}
                   />
                 </mesh>
-                <mesh position={[0, 0.0, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                <mesh position={[0, 0.72, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+                {/* Yellow Lamp */}
+                <mesh position={[0, 0.0, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isNSYellow ? '#FACC15' : '#422006'}
-                    emissive={isNSYellow ? '#FACC15' : '#000000'}
-                    emissiveIntensity={isNSYellow ? 5.0 : 0}
+                    color={nsSignal === 'YELLOW' ? '#F59E0B' : '#141720'}
+                    emissive={nsSignal === 'YELLOW' ? '#F59E0B' : '#000000'}
+                    emissiveIntensity={nsSignal === 'YELLOW' ? 2.4 : 0}
+                    roughness={nsSignal === 'YELLOW' ? 0.2 : 0.4}
                   />
                 </mesh>
-                <mesh position={[0, -0.55, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                <mesh position={[0, 0.17, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+                {/* Green Lamp */}
+                <mesh position={[0, -0.55, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isNSGreen ? '#22C55E' : '#052E16'}
-                    emissive={isNSGreen ? '#22C55E' : '#000000'}
-                    emissiveIntensity={isNSGreen ? 5.0 : 0}
+                    color={nsSignal === 'GREEN' ? '#10B981' : '#141720'}
+                    emissive={nsSignal === 'GREEN' ? '#10B981' : '#000000'}
+                    emissiveIntensity={nsSignal === 'GREEN' ? 2.4 : 0}
+                    roughness={nsSignal === 'GREEN' ? 0.2 : 0.4}
                   />
                 </mesh>
+                <mesh position={[0, -0.38, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+
+                {/* Digital Countdown Timer */}
+                <group position={[0.62, 0.15, 0]}>
+                  <mesh castShadow>
+                    <boxGeometry args={[0.54, 0.54, 0.3]} />
+                    <meshStandardMaterial color="#0A0E17" roughness={0.5} />
+                  </mesh>
+                  <mesh position={[0, 0, -0.04]}>
+                    <boxGeometry args={[0.64, 0.64, 0.04]} />
+                    <meshStandardMaterial color="#F59E0B" roughness={0.5} />
+                  </mesh>
+                  <mesh position={[0, 0, 0.16]}>
+                    <planeGeometry args={[0.44, 0.44]} />
+                    <meshBasicMaterial color="#020617" />
+                  </mesh>
+                  <mesh position={[0, 0, 0.17]}>
+                    <planeGeometry args={[0.36, 0.36]} />
+                    <meshBasicMaterial color={nsSignal === 'GREEN' ? '#10B981' : nsSignal === 'YELLOW' ? '#F59E0B' : '#EF4444'} />
+                  </mesh>
+                </group>
               </group>
 
-              {/* Lower Auxiliary Signal Head facing North */}
+              {/* Lower Auxiliary Signal Head */}
               <group position={[-0.25, 2.6, 0]} rotation={[0, Math.PI, 0]}>
                 <mesh>
-                  <boxGeometry args={[0.42, 1.2, 0.25]} />
-                  <meshStandardMaterial color="#090D16" />
+                  <boxGeometry args={[0.38, 1.15, 0.22]} />
+                  <meshStandardMaterial color="#0A0E17" />
                 </mesh>
-                <mesh position={[0, 0.35, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
+                <mesh position={[0, 0.34, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
                   <meshStandardMaterial
-                    color={isNSRed ? '#EF4444' : '#450A0A'}
-                    emissive={isNSRed ? '#EF4444' : '#000000'}
-                    emissiveIntensity={isNSRed ? 4.0 : 0}
+                    color={nsSignal === 'RED' ? '#EF4444' : '#141720'}
+                    emissive={nsSignal === 'RED' ? '#EF4444' : '#000000'}
+                    emissiveIntensity={nsSignal === 'RED' ? 2.0 : 0}
                   />
                 </mesh>
-                <mesh position={[0, 0.0, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
+                <mesh position={[0, 0.0, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
                   <meshStandardMaterial
-                    color={isNSYellow ? '#FACC15' : '#422006'}
-                    emissive={isNSYellow ? '#FACC15' : '#000000'}
-                    emissiveIntensity={isNSYellow ? 4.0 : 0}
+                    color={nsSignal === 'YELLOW' ? '#F59E0B' : '#141720'}
+                    emissive={nsSignal === 'YELLOW' ? '#F59E0B' : '#000000'}
+                    emissiveIntensity={nsSignal === 'YELLOW' ? 2.0 : 0}
                   />
                 </mesh>
-                <mesh position={[0, -0.35, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
+                <mesh position={[0, -0.34, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
                   <meshStandardMaterial
-                    color={isNSGreen ? '#22C55E' : '#052E16'}
-                    emissive={isNSGreen ? '#22C55E' : '#000000'}
-                    emissiveIntensity={isNSGreen ? 4.0 : 0}
+                    color={nsSignal === 'GREEN' ? '#10B981' : '#141720'}
+                    emissive={nsSignal === 'GREEN' ? '#10B981' : '#000000'}
+                    emissiveIntensity={nsSignal === 'GREEN' ? 2.0 : 0}
                   />
                 </mesh>
               </group>
             </group>
 
-            {/* 4. Northbound Approach Mast Arm (Pole on West Sidewalk at X=-4.8, Z=6.5) */}
+            {/* 4. Northbound Approach (Pole on West Sidewalk at X=-4.8, Z=6.5) */}
             <group position={[-4.8, 0, 6.5]}>
-              {/* Pole Base */}
-              <mesh position={[0, 0.3, 0]} castShadow>
-                <cylinderGeometry args={[0.22, 0.26, 0.6, 12]} />
+              <mesh position={[0, 0.35, 0]} castShadow>
+                <cylinderGeometry args={[0.22, 0.26, 0.7, 12]} />
                 <meshStandardMaterial color="#EAB308" roughness={0.4} />
               </mesh>
-              {/* Column */}
               <mesh position={[0, 3.0, 0]} castShadow>
                 <cylinderGeometry args={[0.13, 0.16, 6.0, 10]} />
                 <meshStandardMaterial color="#64748B" metalness={0.7} roughness={0.3} />
               </mesh>
-              {/* Cantilever Arm reaching East over Northbound lane (to X=3.05 -> X=-1.75 in intersection coords) */}
               <mesh position={[1.55, 5.8, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
                 <cylinderGeometry args={[0.09, 0.11, 3.1, 10]} />
                 <meshStandardMaterial color="#64748B" metalness={0.7} roughness={0.3} />
               </mesh>
 
-              {/* Overhead Signal Head facing South (rotation 0) towards oncoming Northbound traffic */}
+              {/* Overhead Signal Head facing South towards Northbound traffic */}
               <group position={[3.05, 5.3, 0]} rotation={[0, 0, 0]}>
                 <mesh castShadow>
-                  <boxGeometry args={[0.65, 1.8, 0.38]} />
-                  <meshStandardMaterial color="#090D16" roughness={0.5} />
+                  <boxGeometry args={[0.66, 1.85, 0.36]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.5} />
                 </mesh>
-                <mesh position={[0, 0, -0.05]}>
-                  <boxGeometry args={[0.82, 1.95, 0.05]} />
-                  <meshStandardMaterial color="#F59E0B" roughness={0.6} />
+                <mesh position={[0, 0, -0.06]}>
+                  <boxGeometry args={[0.82, 2.02, 0.04]} />
+                  <meshStandardMaterial color="#F59E0B" roughness={0.5} />
                 </mesh>
-                <mesh position={[0, 0.55, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                {/* Red Lamp */}
+                <mesh position={[0, 0.55, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isNSRed ? '#EF4444' : '#450A0A'}
-                    emissive={isNSRed ? '#EF4444' : '#000000'}
-                    emissiveIntensity={isNSRed ? 5.0 : 0}
+                    color={nsSignal === 'RED' ? '#EF4444' : '#141720'}
+                    emissive={nsSignal === 'RED' ? '#EF4444' : '#000000'}
+                    emissiveIntensity={nsSignal === 'RED' ? 2.4 : 0}
+                    roughness={nsSignal === 'RED' ? 0.2 : 0.4}
                   />
                 </mesh>
-                <mesh position={[0, 0.0, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                <mesh position={[0, 0.72, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+                {/* Yellow Lamp */}
+                <mesh position={[0, 0.0, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isNSYellow ? '#FACC15' : '#422006'}
-                    emissive={isNSYellow ? '#FACC15' : '#000000'}
-                    emissiveIntensity={isNSYellow ? 5.0 : 0}
+                    color={nsSignal === 'YELLOW' ? '#F59E0B' : '#141720'}
+                    emissive={nsSignal === 'YELLOW' ? '#F59E0B' : '#000000'}
+                    emissiveIntensity={nsSignal === 'YELLOW' ? 2.4 : 0}
+                    roughness={nsSignal === 'YELLOW' ? 0.2 : 0.4}
                   />
                 </mesh>
-                <mesh position={[0, -0.55, 0.22]}>
-                  <sphereGeometry args={[0.2, 16, 16]} />
+                <mesh position={[0, 0.17, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+                {/* Green Lamp */}
+                <mesh position={[0, -0.55, 0.2]}>
+                  <sphereGeometry args={[0.2, 18, 18]} />
                   <meshStandardMaterial
-                    color={isNSGreen ? '#22C55E' : '#052E16'}
-                    emissive={isNSGreen ? '#22C55E' : '#000000'}
-                    emissiveIntensity={isNSGreen ? 5.0 : 0}
+                    color={nsSignal === 'GREEN' ? '#10B981' : '#141720'}
+                    emissive={nsSignal === 'GREEN' ? '#10B981' : '#000000'}
+                    emissiveIntensity={nsSignal === 'GREEN' ? 2.4 : 0}
+                    roughness={nsSignal === 'GREEN' ? 0.2 : 0.4}
                   />
                 </mesh>
+                <mesh position={[0, -0.38, 0.26]} rotation={[0.4, 0, 0]}>
+                  <boxGeometry args={[0.36, 0.05, 0.2]} />
+                  <meshStandardMaterial color="#0A0E17" roughness={0.7} />
+                </mesh>
+
+                {/* Digital Countdown Timer */}
+                <group position={[0.62, 0.15, 0]}>
+                  <mesh castShadow>
+                    <boxGeometry args={[0.54, 0.54, 0.3]} />
+                    <meshStandardMaterial color="#0A0E17" roughness={0.5} />
+                  </mesh>
+                  <mesh position={[0, 0, -0.04]}>
+                    <boxGeometry args={[0.64, 0.64, 0.04]} />
+                    <meshStandardMaterial color="#F59E0B" roughness={0.5} />
+                  </mesh>
+                  <mesh position={[0, 0, 0.16]}>
+                    <planeGeometry args={[0.44, 0.44]} />
+                    <meshBasicMaterial color="#020617" />
+                  </mesh>
+                  <mesh position={[0, 0, 0.17]}>
+                    <planeGeometry args={[0.36, 0.36]} />
+                    <meshBasicMaterial color={nsSignal === 'GREEN' ? '#10B981' : nsSignal === 'YELLOW' ? '#F59E0B' : '#EF4444'} />
+                  </mesh>
+                </group>
               </group>
 
-              {/* Lower Auxiliary Signal Head facing South */}
+              {/* Lower Auxiliary Signal Head */}
               <group position={[0.25, 2.6, 0]} rotation={[0, 0, 0]}>
                 <mesh>
-                  <boxGeometry args={[0.42, 1.2, 0.25]} />
-                  <meshStandardMaterial color="#090D16" />
+                  <boxGeometry args={[0.38, 1.15, 0.22]} />
+                  <meshStandardMaterial color="#0A0E17" />
                 </mesh>
-                <mesh position={[0, 0.35, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
-                  <meshBasicMaterial
-                    color={isNSRed ? '#EF4444' : '#450A0A'}
+                <mesh position={[0, 0.34, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
+                  <meshStandardMaterial
+                    color={nsSignal === 'RED' ? '#EF4444' : '#141720'}
+                    emissive={nsSignal === 'RED' ? '#EF4444' : '#000000'}
+                    emissiveIntensity={nsSignal === 'RED' ? 2.0 : 0}
                   />
                 </mesh>
-                <mesh position={[0, 0.0, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
-                  <meshBasicMaterial
-                    color={isNSYellow ? '#FACC15' : '#422006'}
+                <mesh position={[0, 0.0, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
+                  <meshStandardMaterial
+                    color={nsSignal === 'YELLOW' ? '#F59E0B' : '#141720'}
+                    emissive={nsSignal === 'YELLOW' ? '#F59E0B' : '#000000'}
+                    emissiveIntensity={nsSignal === 'YELLOW' ? 2.0 : 0}
                   />
                 </mesh>
-                <mesh position={[0, -0.35, 0.14]}>
-                  <sphereGeometry args={[0.12, 12, 12]} />
-                  <meshBasicMaterial
-                    color={isNSGreen ? '#22C55E' : '#052E16'}
+                <mesh position={[0, -0.34, 0.12]}>
+                  <sphereGeometry args={[0.11, 14, 14]} />
+                  <meshStandardMaterial
+                    color={nsSignal === 'GREEN' ? '#10B981' : '#141720'}
+                    emissive={nsSignal === 'GREEN' ? '#10B981' : '#000000'}
+                    emissiveIntensity={nsSignal === 'GREEN' ? 2.0 : 0}
                   />
                 </mesh>
               </group>

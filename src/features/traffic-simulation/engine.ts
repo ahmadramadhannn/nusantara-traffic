@@ -2,6 +2,10 @@ import {
   RoadNode,
   RoadSegment,
   TrafficLightState,
+  TrafficLightFsmConfig,
+  TrafficLightFsmState,
+  SignalColor,
+  PedestrianSignalState,
   Vehicle,
   VehicleType,
   WeatherType,
@@ -204,56 +208,347 @@ export function calculateVehiclePose(
   };
 }
 
-// Initialize Traffic Lights with standard offset phases
+// Traffic Light Finite State Machine (FSM) Implementation
+const INTERSECTION_NAMES: Record<string, string> = {
+  int_nw: 'Simpang Sudirman - Merdeka (NW)',
+  int_ne: 'Simpang Sudirman - Diponegoro (NE)',
+  int_sw: 'Simpang Kartini - Merdeka (SW)',
+  int_se: 'Simpang Kartini - Diponegoro (SE)',
+};
+
+const DEFAULT_FSM_CONFIG: TrafficLightFsmConfig = {
+  greenDurationEW: 15.0,
+  yellowDurationEW: 3.5,
+  allRedDurationEW: 2.0,
+  greenDurationNS: 14.0,
+  yellowDurationNS: 3.5,
+  allRedDurationNS: 2.0,
+  pedestrianCrossingDuration: 9.0,
+};
+
+export function computeFsmOutputs(
+  fsmState: TrafficLightFsmState,
+  stateTimer: number,
+  stateDuration: number
+): {
+  ewSignal: SignalColor;
+  nsSignal: SignalColor;
+  activeDirection: 'EW' | 'NS';
+  isYellow: boolean;
+  isAllRed: boolean;
+  remainingTime: number;
+  pedestrianSignal: PedestrianSignalState;
+  pedestrianRemainingTime: number;
+} {
+  const remainingTime = Math.max(0, Math.ceil(stateDuration - stateTimer));
+
+  switch (fsmState) {
+    case 'EW_GREEN':
+      return {
+        ewSignal: 'GREEN',
+        nsSignal: 'RED',
+        activeDirection: 'EW',
+        isYellow: false,
+        isAllRed: false,
+        remainingTime,
+        pedestrianSignal: 'DONT_WALK',
+        pedestrianRemainingTime: 0,
+      };
+    case 'EW_YELLOW':
+      return {
+        ewSignal: 'YELLOW',
+        nsSignal: 'RED',
+        activeDirection: 'EW',
+        isYellow: true,
+        isAllRed: false,
+        remainingTime,
+        pedestrianSignal: 'DONT_WALK',
+        pedestrianRemainingTime: 0,
+      };
+    case 'ALL_RED_AFTER_EW':
+      return {
+        ewSignal: 'RED',
+        nsSignal: 'RED',
+        activeDirection: 'EW',
+        isYellow: false,
+        isAllRed: true,
+        remainingTime,
+        pedestrianSignal: 'DONT_WALK',
+        pedestrianRemainingTime: 0,
+      };
+    case 'NS_GREEN':
+      return {
+        ewSignal: 'RED',
+        nsSignal: 'GREEN',
+        activeDirection: 'NS',
+        isYellow: false,
+        isAllRed: false,
+        remainingTime,
+        pedestrianSignal: 'DONT_WALK',
+        pedestrianRemainingTime: 0,
+      };
+    case 'NS_YELLOW':
+      return {
+        ewSignal: 'RED',
+        nsSignal: 'YELLOW',
+        activeDirection: 'NS',
+        isYellow: true,
+        isAllRed: false,
+        remainingTime,
+        pedestrianSignal: 'DONT_WALK',
+        pedestrianRemainingTime: 0,
+      };
+    case 'ALL_RED_AFTER_NS':
+      return {
+        ewSignal: 'RED',
+        nsSignal: 'RED',
+        activeDirection: 'NS',
+        isYellow: false,
+        isAllRed: true,
+        remainingTime,
+        pedestrianSignal: 'DONT_WALK',
+        pedestrianRemainingTime: 0,
+      };
+    case 'PEDESTRIAN_CROSSING': {
+      const isEnding = remainingTime <= 3;
+      return {
+        ewSignal: 'RED',
+        nsSignal: 'RED',
+        activeDirection: 'EW',
+        isYellow: false,
+        isAllRed: true,
+        remainingTime,
+        pedestrianSignal: isEnding ? 'FLASHING_DONT_WALK' : 'WALK',
+        pedestrianRemainingTime: remainingTime,
+      };
+    }
+    case 'MANUAL_EW_GREEN':
+      return {
+        ewSignal: 'GREEN',
+        nsSignal: 'RED',
+        activeDirection: 'EW',
+        isYellow: false,
+        isAllRed: false,
+        remainingTime: 99,
+        pedestrianSignal: 'DONT_WALK',
+        pedestrianRemainingTime: 0,
+      };
+    case 'MANUAL_NS_GREEN':
+      return {
+        ewSignal: 'RED',
+        nsSignal: 'GREEN',
+        activeDirection: 'NS',
+        isYellow: false,
+        isAllRed: false,
+        remainingTime: 99,
+        pedestrianSignal: 'DONT_WALK',
+        pedestrianRemainingTime: 0,
+      };
+    case 'ALL_RED_MANUAL':
+      return {
+        ewSignal: 'RED',
+        nsSignal: 'RED',
+        activeDirection: 'EW',
+        isYellow: false,
+        isAllRed: true,
+        remainingTime: 99,
+        pedestrianSignal: 'DONT_WALK',
+        pedestrianRemainingTime: 0,
+      };
+    case 'FLASHING_YELLOW': {
+      const isLit = (stateTimer % 1.0) < 0.5;
+      return {
+        ewSignal: isLit ? 'YELLOW' : 'FLASHING_YELLOW',
+        nsSignal: isLit ? 'YELLOW' : 'FLASHING_YELLOW',
+        activeDirection: 'EW',
+        isYellow: true,
+        isAllRed: false,
+        remainingTime: 0,
+        pedestrianSignal: 'DONT_WALK',
+        pedestrianRemainingTime: 0,
+      };
+    }
+    default:
+      return {
+        ewSignal: 'RED',
+        nsSignal: 'RED',
+        activeDirection: 'EW',
+        isYellow: false,
+        isAllRed: true,
+        remainingTime: 0,
+        pedestrianSignal: 'DONT_WALK',
+        pedestrianRemainingTime: 0,
+      };
+  }
+}
+
+// Initialize Traffic Lights as formal Finite State Machines
 export function initializeTrafficLights(): Record<string, TrafficLightState> {
-  const intersections = ['int_nw', 'int_ne', 'int_sw', 'int_se'];
+  const intersections = [
+    { id: 'int_nw', startState: 'EW_GREEN' as TrafficLightFsmState, initialTimer: 2.0 },
+    { id: 'int_ne', startState: 'EW_GREEN' as TrafficLightFsmState, initialTimer: 7.0 },
+    { id: 'int_sw', startState: 'NS_GREEN' as TrafficLightFsmState, initialTimer: 3.0 },
+    { id: 'int_se', startState: 'NS_GREEN' as TrafficLightFsmState, initialTimer: 8.0 },
+  ];
+
   const lights: Record<string, TrafficLightState> = {};
 
-  intersections.forEach((id, index) => {
+  intersections.forEach(({ id, startState, initialTimer }) => {
+    const config = { ...DEFAULT_FSM_CONFIG };
+    const stateDuration =
+      startState === 'EW_GREEN'
+        ? config.greenDurationEW
+        : startState === 'NS_GREEN'
+        ? config.greenDurationNS
+        : 14.0;
+
+    const outputs = computeFsmOutputs(startState, initialTimer, stateDuration);
+
     lights[id] = {
       intersectionId: id,
-      activeDirection: index % 2 === 0 ? 'EW' : 'NS',
-      phaseTime: index * 3.5,
-      durationGreen: 14.0,
-      durationYellow: 3.0,
-      isYellow: false,
+      name: INTERSECTION_NAMES[id] || id,
+      fsmState: startState,
+      stateTimer: initialTimer,
+      stateDuration,
+      pedestrianCallActive: false,
+      mode: 'auto',
+      config,
+      ...outputs,
     };
   });
 
   return lights;
 }
 
-// Update Traffic Lights by delta time
+// Update Traffic Lights via FSM state transition table with Pedestrian Actuation
 export function updateTrafficLights(
   lights: Record<string, TrafficLightState>,
   deltaTime: number
 ): Record<string, TrafficLightState> {
-  const nextLights: Record<string, TrafficLightState> = { ...lights };
+  const nextLights: Record<string, TrafficLightState> = {};
 
-  for (const id of Object.keys(nextLights)) {
-    const light = { ...nextLights[id] };
-    light.phaseTime += deltaTime;
+  for (const id of Object.keys(lights)) {
+    const light = { ...lights[id] };
+    const cfg = light.config || DEFAULT_FSM_CONFIG;
 
-    const totalCycle = light.durationGreen + light.durationYellow;
+    if (light.mode === 'auto') {
+      light.stateTimer += deltaTime;
 
-    if (light.phaseTime < light.durationGreen) {
-      light.isYellow = false;
-    } else if (light.phaseTime < totalCycle) {
-      light.isYellow = true;
-    } else {
-      // Switch green direction
-      light.phaseTime = 0;
-      light.isYellow = false;
-      light.activeDirection = light.activeDirection === 'EW' ? 'NS' : 'EW';
+      // Pedestrian Actuation check: If a pedestrian call is pending and minimum green has elapsed, shorten phase to amber
+      if (light.pedestrianCallActive) {
+        if (light.fsmState === 'EW_GREEN' && light.stateTimer >= 3.0) {
+          light.fsmState = 'EW_YELLOW';
+          light.stateTimer = 0;
+          light.stateDuration = cfg.yellowDurationEW;
+          light.activeDirection = 'EW';
+        } else if (light.fsmState === 'NS_GREEN' && light.stateTimer >= 3.0) {
+          light.fsmState = 'NS_YELLOW';
+          light.stateTimer = 0;
+          light.stateDuration = cfg.yellowDurationNS;
+          light.activeDirection = 'NS';
+        } else if (light.fsmState === 'ALL_RED_AFTER_EW' || light.fsmState === 'ALL_RED_AFTER_NS') {
+          // If already in all-red clearance when call arrives, enter pedestrian walk phase directly
+          light.fsmState = 'PEDESTRIAN_CROSSING';
+          light.stateTimer = 0;
+          light.stateDuration = cfg.pedestrianCrossingDuration;
+        }
+      }
+
+      if (light.stateTimer >= light.stateDuration) {
+        // State Machine Transition Rule
+        light.stateTimer = 0;
+        switch (light.fsmState) {
+          case 'EW_GREEN':
+            light.fsmState = 'EW_YELLOW';
+            light.stateDuration = cfg.yellowDurationEW;
+            light.activeDirection = 'EW';
+            break;
+          case 'EW_YELLOW':
+            // If pedestrian call was made, grant immediate Pedestrian Walk phase!
+            if (light.pedestrianCallActive) {
+              light.fsmState = 'PEDESTRIAN_CROSSING';
+              light.stateDuration = cfg.pedestrianCrossingDuration;
+              light.activeDirection = 'EW';
+            } else {
+              light.fsmState = 'ALL_RED_AFTER_EW';
+              light.stateDuration = cfg.allRedDurationEW;
+              light.activeDirection = 'EW';
+            }
+            break;
+          case 'ALL_RED_AFTER_EW':
+            if (light.pedestrianCallActive) {
+              light.fsmState = 'PEDESTRIAN_CROSSING';
+              light.stateDuration = cfg.pedestrianCrossingDuration;
+              light.activeDirection = 'EW';
+            } else {
+              light.fsmState = 'NS_GREEN';
+              light.stateDuration = cfg.greenDurationNS;
+              light.activeDirection = 'NS';
+            }
+            break;
+          case 'NS_GREEN':
+            light.fsmState = 'NS_YELLOW';
+            light.stateDuration = cfg.yellowDurationNS;
+            light.activeDirection = 'NS';
+            break;
+          case 'NS_YELLOW':
+            if (light.pedestrianCallActive) {
+              light.fsmState = 'PEDESTRIAN_CROSSING';
+              light.stateDuration = cfg.pedestrianCrossingDuration;
+              light.activeDirection = 'NS';
+            } else {
+              light.fsmState = 'ALL_RED_AFTER_NS';
+              light.stateDuration = cfg.allRedDurationNS;
+              light.activeDirection = 'NS';
+            }
+            break;
+          case 'ALL_RED_AFTER_NS':
+            if (light.pedestrianCallActive) {
+              light.fsmState = 'PEDESTRIAN_CROSSING';
+              light.stateDuration = cfg.pedestrianCrossingDuration;
+              light.activeDirection = 'NS';
+            } else {
+              light.fsmState = 'EW_GREEN';
+              light.stateDuration = cfg.greenDurationEW;
+              light.activeDirection = 'EW';
+            }
+            break;
+          case 'PEDESTRIAN_CROSSING':
+            // Reset pedestrian call once walk phase has concluded
+            light.pedestrianCallActive = false;
+            // Provide All-Red buffer after pedestrian crossing before next corridor gets green
+            if (light.activeDirection === 'EW') {
+              light.fsmState = 'ALL_RED_AFTER_EW';
+              light.stateDuration = cfg.allRedDurationEW;
+            } else {
+              light.fsmState = 'ALL_RED_AFTER_NS';
+              light.stateDuration = cfg.allRedDurationNS;
+            }
+            break;
+          default:
+            light.fsmState = 'EW_GREEN';
+            light.stateDuration = cfg.greenDurationEW;
+            light.activeDirection = 'EW';
+            break;
+        }
+      }
+    } else if (light.mode === 'flashing') {
+      light.stateTimer += deltaTime;
+      light.fsmState = 'FLASHING_YELLOW';
     }
 
-    nextLights[id] = light;
+    // Recompute current visual signals, pedestrian signals, and countdowns
+    const outputs = computeFsmOutputs(light.fsmState, light.stateTimer, light.stateDuration);
+    nextLights[id] = {
+      ...light,
+      ...outputs,
+    };
   }
 
   return nextLights;
 }
 
-// Check if a traffic light is RED for a vehicle approaching an intersection on a given segment
+// Check if a traffic light is RED / STOP for a vehicle approaching an intersection on a given segment
 export function isLightRedForSegment(
   segment: RoadSegment,
   trafficLights: Record<string, TrafficLightState>
@@ -264,19 +559,27 @@ export function isLightRedForSegment(
   const fromNode = TOWN_NODES[segment.fromNodeId];
   const toNode = TOWN_NODES[segment.toNodeId];
 
-  // Determine East-West vs North-South based on geometry and name
+  // Determine East-West vs North-South corridor
   const isEastWest = fromNode && toNode
     ? Math.abs(toNode.x - fromNode.x) > Math.abs(toNode.z - fromNode.z)
     : segment.name.toLowerCase().includes('sudirman') || segment.name.toLowerCase().includes('kartini');
 
+  if (light.mode === 'flashing' || light.fsmState === 'FLASHING_YELLOW') {
+    // Flashing caution: vehicles do not stop unconditionally, but yield in proximity pass
+    return false;
+  }
+
   if (isEastWest) {
-    // East-West corridor (Jl. Sudirman & Jl. Kartini): Green only when activeDirection === 'EW' and NOT yellow
-    return light.activeDirection !== 'EW' || light.isYellow;
+    // East-West corridor (Jl. Sudirman & Jl. Kartini)
+    // Permitted to enter only if strictly GREEN
+    return light.ewSignal !== 'GREEN';
   } else {
-    // North-South corridor (Jl. Merdeka & Jl. Diponegoro): Green only when activeDirection === 'NS' and NOT yellow
-    return light.activeDirection !== 'NS' || light.isYellow;
+    // North-South corridor (Jl. Merdeka & Jl. Diponegoro)
+    // Permitted to enter only if strictly GREEN
+    return light.nsSignal !== 'GREEN';
   }
 }
+
 
 // Helper to check if a vehicle is currently inside or traversing an intersection box
 const INTERSECTION_POSITIONS: Record<string, { x: number; z: number }> = {

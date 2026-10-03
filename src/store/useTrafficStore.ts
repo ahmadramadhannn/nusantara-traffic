@@ -3,9 +3,12 @@ import {
   CameraViewMode,
   ContextMenuState,
   DetailedRoute,
+  Pedestrian,
   RouteTripSimulation,
   SimulationStats,
   TimeOfDay,
+  TrafficLightFsmConfig,
+  TrafficLightFsmState,
   TrafficLightState,
   TripPoint,
   Vehicle,
@@ -14,12 +17,17 @@ import {
 } from '../types';
 import {
   calculateDetailedRoute,
+  computeFsmOutputs,
   createVehicleInstance,
   findNodePath,
   initializeTrafficLights,
   stepTrafficSimulation,
   updateTrafficLights,
 } from '../features/traffic-simulation/engine';
+import {
+  createInitialPedestrians,
+  stepPedestriansSimulation,
+} from '../features/pedestrians/pedestrianEngine';
 import { findNearestRoadNode, TOWN_LANDMARKS } from '../features/town-scene/constants';
 
 export interface FleetConfig {
@@ -38,6 +46,7 @@ export interface TrafficStoreState {
   // Entities
   vehicles: Vehicle[];
   trafficLights: Record<string, TrafficLightState>;
+  pedestrians: Pedestrian[];
   stats: SimulationStats;
 
   // Environment & Context
@@ -63,7 +72,7 @@ export interface TrafficStoreState {
   contextMenu: ContextMenuState;
 
   // UI Modal State
-  activeModal: 'fleet' | 'environment' | 'stats' | 'route' | 'presets' | null;
+  activeModal: 'fleet' | 'environment' | 'stats' | 'route' | 'presets' | 'traffic_lights' | null;
 
   // History for charts/analytics
   statsHistory: { time: number; congestion: number; speed: number; delay: number }[];
@@ -76,11 +85,18 @@ export interface TrafficStoreState {
   setRainIntensity: (val: number) => void;
   setCameraMode: (mode: CameraViewMode, vehicleId?: string) => void;
   setSelectedVehicleId: (id: string | null) => void;
-  setActiveModal: (modal: 'fleet' | 'environment' | 'stats' | 'route' | 'presets' | null) => void;
+  setActiveModal: (modal: 'fleet' | 'environment' | 'stats' | 'route' | 'presets' | 'traffic_lights' | null) => void;
 
   setFleetCounts: (newConfig: Partial<FleetConfig>) => void;
   respawnFleet: () => void;
   applyPreset: (presetKey: string) => void;
+
+  // Traffic Light FSM Controls
+  setTrafficLightFsmMode: (intersectionId: string, mode: 'auto' | 'manual' | 'flashing', forcedState?: TrafficLightFsmState) => void;
+  updateTrafficLightFsmConfig: (intersectionId: string, newConfig: Partial<TrafficLightFsmConfig>) => void;
+  forceNextFsmPhase: (intersectionId: string) => void;
+  setAllTrafficLightsMode: (mode: 'auto' | 'flashing' | 'all_red') => void;
+  requestPedestrianCrossing: (intersectionId: string) => void;
 
   // Dynamic Trip Planning Actions
   setTripStartPoint: (point: TripPoint) => void;
@@ -172,6 +188,7 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
 
     vehicles: initialSim.vehicles,
     trafficLights: initialLights,
+    pedestrians: createInitialPedestrians(),
     stats: initialSim.stats,
 
     weather: 'clear',
@@ -381,6 +398,133 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
       });
     },
 
+    setTrafficLightFsmMode: (intersectionId, mode, forcedState) => {
+      const state = get();
+      const current = state.trafficLights[intersectionId];
+      if (!current) return;
+
+      const fsmState = forcedState || (mode === 'flashing' ? 'FLASHING_YELLOW' : 'EW_GREEN');
+      const outputs = computeFsmOutputs(fsmState, 0, current.stateDuration);
+
+      const updatedLights = {
+        ...state.trafficLights,
+        [intersectionId]: {
+          ...current,
+          mode,
+          fsmState,
+          stateTimer: 0,
+          ...outputs,
+        },
+      };
+
+      set({ trafficLights: updatedLights });
+    },
+
+    updateTrafficLightFsmConfig: (intersectionId, newConfig) => {
+      const state = get();
+      const current = state.trafficLights[intersectionId];
+      if (!current) return;
+
+      const mergedConfig = { ...current.config, ...newConfig };
+      const updatedLights = {
+        ...state.trafficLights,
+        [intersectionId]: {
+          ...current,
+          config: mergedConfig,
+        },
+      };
+
+      set({ trafficLights: updatedLights });
+    },
+
+    forceNextFsmPhase: (intersectionId) => {
+      const state = get();
+      const current = state.trafficLights[intersectionId];
+      if (!current) return;
+
+      let nextState: TrafficLightFsmState = 'EW_GREEN';
+      let nextDuration = current.config.greenDurationEW;
+
+      switch (current.fsmState) {
+        case 'EW_GREEN':
+          nextState = 'EW_YELLOW';
+          nextDuration = current.config.yellowDurationEW;
+          break;
+        case 'EW_YELLOW':
+          nextState = 'ALL_RED_AFTER_EW';
+          nextDuration = current.config.allRedDurationEW;
+          break;
+        case 'ALL_RED_AFTER_EW':
+          nextState = 'NS_GREEN';
+          nextDuration = current.config.greenDurationNS;
+          break;
+        case 'NS_GREEN':
+          nextState = 'NS_YELLOW';
+          nextDuration = current.config.yellowDurationNS;
+          break;
+        case 'NS_YELLOW':
+          nextState = 'ALL_RED_AFTER_NS';
+          nextDuration = current.config.allRedDurationNS;
+          break;
+        case 'ALL_RED_AFTER_NS':
+        default:
+          nextState = 'EW_GREEN';
+          nextDuration = current.config.greenDurationEW;
+          break;
+      }
+
+      const outputs = computeFsmOutputs(nextState, 0, nextDuration);
+      const updatedLights = {
+        ...state.trafficLights,
+        [intersectionId]: {
+          ...current,
+          fsmState: nextState,
+          stateTimer: 0,
+          stateDuration: nextDuration,
+          ...outputs,
+        },
+      };
+
+      set({ trafficLights: updatedLights });
+    },
+
+    setAllTrafficLightsMode: (mode) => {
+      const state = get();
+      const nextLights: Record<string, TrafficLightState> = {};
+
+      for (const id of Object.keys(state.trafficLights)) {
+        const light = state.trafficLights[id];
+        if (mode === 'flashing') {
+          const outputs = computeFsmOutputs('FLASHING_YELLOW', 0, 10);
+          nextLights[id] = { ...light, mode: 'flashing', fsmState: 'FLASHING_YELLOW', stateTimer: 0, ...outputs };
+        } else if (mode === 'all_red') {
+          const outputs = computeFsmOutputs('ALL_RED_MANUAL', 0, 99);
+          nextLights[id] = { ...light, mode: 'manual', fsmState: 'ALL_RED_MANUAL', stateTimer: 0, ...outputs };
+        } else {
+          // Auto
+          const outputs = computeFsmOutputs('EW_GREEN', 0, light.config.greenDurationEW);
+          nextLights[id] = { ...light, mode: 'auto', fsmState: 'EW_GREEN', stateTimer: 0, ...outputs };
+        }
+      }
+
+      set({ trafficLights: nextLights });
+    },
+
+    requestPedestrianCrossing: (intersectionId) => {
+      const state = get();
+      const current = state.trafficLights[intersectionId];
+      if (!current) return;
+      set({
+        trafficLights: {
+          ...state.trafficLights,
+          [intersectionId]: {
+            ...current,
+            pedestrianCallActive: true,
+          },
+        },
+      });
+    },
+
     setTripStartPoint: (point) => {
       const state = get();
       const updatedRoute = calculateDetailedRoute(
@@ -515,9 +659,14 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
       const dt = Math.min(0.1, realDeltaTime) * state.simSpeed;
 
       const updatedLights = updateTrafficLights(state.trafficLights, dt);
+      const { updatedPedestrians, updatedTrafficLights: lightsAfterPed } = stepPedestriansSimulation(
+        state.pedestrians,
+        updatedLights,
+        dt
+      );
       const { vehicles, stats } = stepTrafficSimulation(
         state.vehicles,
-        updatedLights,
+        lightsAfterPed,
         state.weather,
         state.timeOfDay,
         dt
@@ -529,7 +678,7 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
         state.startPoint,
         state.endPoint,
         vehicles,
-        updatedLights,
+        lightsAfterPed,
         state.weather
       );
 
@@ -571,7 +720,8 @@ export const useTrafficStore = create<TrafficStoreState>((set, get) => {
       }
 
       set({
-        trafficLights: updatedLights,
+        trafficLights: lightsAfterPed,
+        pedestrians: updatedPedestrians,
         vehicles,
         stats,
         detailedRoute,

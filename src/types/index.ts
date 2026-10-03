@@ -67,14 +67,73 @@ export interface Vehicle {
   customLabel?: string;
 }
 
+export type TrafficLightFsmState =
+  | 'EW_GREEN'
+  | 'EW_YELLOW'
+  | 'ALL_RED_AFTER_EW'
+  | 'NS_GREEN'
+  | 'NS_YELLOW'
+  | 'ALL_RED_AFTER_NS'
+  | 'PEDESTRIAN_CROSSING'
+  | 'MANUAL_EW_GREEN'
+  | 'MANUAL_NS_GREEN'
+  | 'ALL_RED_MANUAL'
+  | 'FLASHING_YELLOW';
+
+export type SignalColor = 'RED' | 'YELLOW' | 'GREEN' | 'FLASHING_YELLOW';
+export type PedestrianSignalState = 'WALK' | 'FLASHING_DONT_WALK' | 'DONT_WALK';
+
+export interface TrafficLightFsmConfig {
+  greenDurationEW: number;
+  yellowDurationEW: number;
+  allRedDurationEW: number;
+  greenDurationNS: number;
+  yellowDurationNS: number;
+  allRedDurationNS: number;
+  pedestrianCrossingDuration: number;
+}
+
 export interface TrafficLightState {
   intersectionId: string;
-  activeDirection: 'EW' | 'NS'; // East-West or North-South green
-  phaseTime: number; // elapsed time in current phase
-  durationGreen: number;
-  durationYellow: number;
+  name: string;
+  fsmState: TrafficLightFsmState;
+  stateTimer: number; // elapsed time in current state (seconds)
+  stateDuration: number; // target duration for current state (seconds)
+  remainingTime: number; // countdown in integer seconds
+  // Active signal colors for each corridor:
+  ewSignal: SignalColor;
+  nsSignal: SignalColor;
+  // Pedestrian crosswalk signal state:
+  pedestrianSignal: PedestrianSignalState;
+  pedestrianCallActive: boolean; // whether crosswalk call button is pressed
+  pedestrianRemainingTime: number; // remaining walk time in seconds
+  // Backward compatibility properties:
+  activeDirection: 'EW' | 'NS';
   isYellow: boolean;
+  isAllRed: boolean;
+  // Controller mode:
+  mode: 'auto' | 'manual' | 'flashing';
+  config: TrafficLightFsmConfig;
 }
+
+export interface Pedestrian {
+  id: string;
+  intersectionId: string;
+  crosswalkId: string;
+  startPos: [number, number, number];
+  targetPos: [number, number, number];
+  position: [number, number, number];
+  rotation: number;
+  progress: number; // 0.0 to 1.0
+  speed: number;
+  status: 'waiting' | 'crossing' | 'crossed';
+  type: 'student' | 'citizen' | 'elderly';
+  label: string;
+  color: string;
+  waitingTime: number;
+}
+
+
 
 export interface TripPoint {
   id: string;
